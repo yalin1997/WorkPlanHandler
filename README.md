@@ -20,8 +20,9 @@
 
 | 階段 | 內容 | 驗收項目 | 狀態 |
 |------|------|----------|------|
-| **Phase 1** | 技術棧 / 論文理論 survey | Survey 報告 + MVP 實作提案 | ✅ 本次交付 |
-| Phase 2 | MVP 實作 (核心抽象 + LangGraph adapter) | 可跑通 plan→execute→verify→replan 迴圈 | 規劃中 |
+| **Phase 1** | 技術棧 / 論文理論 survey | Survey 報告 + MVP 實作提案 | ✅ 已交付 |
+| **Phase 2 規劃** | 各元件規格書與實作計劃 | [`docs/phase2/`](docs/phase2/) 規格書 | ✅ 已交付 |
+| Phase 2 實作 | MVP 實作 (核心抽象 + LangGraph adapter) | 可跑通 plan→execute→verify→replan 迴圈 | 待動工 |
 | Phase 3 | 驗收與記憶體強化、評測 benchmark | 量化評測報告 | 規劃中 |
 
 ## Phase 1 交付物
