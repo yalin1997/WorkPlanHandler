@@ -168,7 +168,7 @@ JSON round-trip OK(I2)
 | 2026-06-12 | `8990e50` | **M1** | 核心實作:純函式狀態機 `engine.py`(6 個 reducer + RETRY→REPLAN→ESCALATE 路由)、完整資料模型、13 種事件、mock 三件套、`pyproject.toml`(核心零依賴)、T1–T8 測試全綠 |
 | 2026-06-12 | `a7679cf` | — | 加入 pre-commit hooks(pre-commit-hooks v6 + ruff check/format),統一全 repo 程式碼格式 |
 | 2026-06-12 | `76e3853` | — | README 補使用方式與開發 log;新增 `examples/demo_mock.py` |
-| 2026-06-12 | *(本次)* | **M2** | LangGraph adapter + SQLite 持久化:`adapters/langgraph.py`(StateGraph 五節點 + SqliteSaver + interrupt)、`WorkPlanRunner` 門面、A1–A8 測試(含 in-process 與 subprocess 真 kill 續跑)、D9 import 邊界守門測試、`examples/demo_resume.py`。三個 sub-agent 平行開發(adapter 本體 / E2E 測試 / 邊界測試)後整合 |
+| 2026-06-12 | `d55e1bc` | **M2** | LangGraph adapter + SQLite 持久化:`adapters/langgraph.py`(StateGraph 五節點 + SqliteSaver + interrupt)、`WorkPlanRunner` 門面、A1–A8 測試(含 in-process 與 subprocess 真 kill 續跑)、D9 import 邊界守門測試、`examples/demo_resume.py`。三個 sub-agent 平行開發(adapter 本體 / E2E 測試 / 邊界測試)後整合 |
 
 > 後續里程碑進度(M3–M5)依此表持續追記。
 
