@@ -18,12 +18,12 @@
 
 ## 目前進度
 
-**M1 已完成**:核心純函式狀態機 engine 可運作,八條路徑測試全綠(全 mock,不需 LLM key)。
+**M1、M2 已完成**:核心純函式狀態機 + LangGraph adapter 持久化,kill process 後可同 thread_id 續跑(全 mock,不需 LLM key)。
 
 | 里程碑 | 內容 | 狀態 |
 |--------|------|------|
 | **M1** | models + events + engine + mock 元件 + T1–T8 測試 | ✅ 完成 |
-| M2 | SqliteSaver + LangGraph adapter(kill process 後同 thread_id 續跑) | 待動工 |
+| **M2** | SqliteSaver + LangGraph adapter(kill process 後同 thread_id 續跑) | ✅ 完成 |
 | M3 | 分層 verifier(hard→soft→human)+ human gate(`interrupt()`) | 待動工 |
 | M4 | 真 LLM planner / LLM judge(Claude via LangChain) | 待動工 |
 | M5 | 審計輸出(JSON 事件流 + Markdown 摘要)+ E2E demo | 待動工 |
@@ -40,10 +40,11 @@ workplan/
 │                    #   on_human_resolved / on_replanned / insert_steps
 ├── executors/mock.py
 ├── verifiers/mock.py
-└── planners/mock.py
+├── planners/mock.py
+└── adapters/langgraph.py  # M2:StateGraph + SqliteSaver + interrupt()(唯一依賴 langgraph 的檔案)
 ```
 
-`adapters/`(LangGraph)、真 LLM planner/judge、分層 verifier 尚未實作,規格見 [`docs/phase2/`](docs/phase2/)。
+真 LLM planner/judge(M4)、分層 verifier(M3)、審計輸出(M5)尚未實作,規格見 [`docs/phase2/`](docs/phase2/)。
 
 ## 快速開始(現階段:mock demo)
 
@@ -55,13 +56,15 @@ plan → execute → verify(gate)→ retry → done 迴圈。
 ```bash
 # 建議用 uv(或自行 python -m venv)
 uv venv .venv
-uv pip install -p .venv -e ".[dev]"
+uv pip install -p .venv -e ".[dev]"            # 純核心(M1 demo 即可跑)
+uv pip install -p .venv -e ".[langgraph,dev]"  # + LangGraph adapter(M2 持久化/續跑)
 ```
 
 ### 跑 demo
 
 ```bash
-.venv/bin/python examples/demo_mock.py
+.venv/bin/python examples/demo_mock.py     # M1:engine 迴圈 + 驗收閘門 + retry
+.venv/bin/python examples/demo_resume.py   # M2:s4 crash → 重啟 → 同 thread_id 續跑
 ```
 
 [`examples/demo_mock.py`](examples/demo_mock.py) 的情境:三步計劃,第 2 步首次驗收失敗,
@@ -97,6 +100,22 @@ while dec.action in (Action.EXECUTE, Action.RETRY, Action.VERIFY):
 # 對應呼叫 on_replanned(planner.replan(...)) / on_human_resolved(gate)。
 ```
 
+M2 之後,上面整段迴圈可交給 LangGraph adapter,並獲得 SQLite 持久化與中斷續跑:
+
+```python
+from workplan.adapters.langgraph import WorkPlanRunner
+
+runner = WorkPlanRunner(executor=..., verifier=..., planner=...,
+                        db_path="/tmp/run.sqlite")     # WSL2 注意:db 放原生路徑
+res = runner.run(plan=plan, thread_id="job-42")        # 未給 thread_id 會自動生成
+
+# process 被 kill 後,新 process 以同 db + 同 thread_id 接續(已 DONE 的步不重跑):
+res = runner.resume("job-42")
+
+# 驗收觸發 human gate 時 res.interrupted == True,人工裁決後恢復:
+res = runner.resume("job-42", resolution="approved", note="人工放行")
+```
+
 demo 輸出(節錄):
 
 ```
@@ -120,8 +139,8 @@ JSON round-trip OK(I2)
 ### 跑測試
 
 ```bash
-.venv/bin/pytest -q          # T1–T8:快樂路徑 / retry / replan / escalate /
-                             # human resume / insert / I1 守恆 / JSON 序列化
+.venv/bin/pytest -q               # 全套:engine T1–T8 + adapter A1–A8 + D9 import 邊界
+.venv/bin/pytest -q -m "not slow" # 日常(跳過 subprocess 級的真 kill 測試)
 ```
 
 ## 開發流程
@@ -148,8 +167,10 @@ JSON round-trip OK(I2)
 | 2026-06-12 | `7bb888d` | — | 加入 `CLAUDE.md`(專案導覽與架構鐵則) |
 | 2026-06-12 | `8990e50` | **M1** | 核心實作:純函式狀態機 `engine.py`(6 個 reducer + RETRY→REPLAN→ESCALATE 路由)、完整資料模型、13 種事件、mock 三件套、`pyproject.toml`(核心零依賴)、T1–T8 測試全綠 |
 | 2026-06-12 | `a7679cf` | — | 加入 pre-commit hooks(pre-commit-hooks v6 + ruff check/format),統一全 repo 程式碼格式 |
+| 2026-06-12 | `76e3853` | — | README 補使用方式與開發 log;新增 `examples/demo_mock.py` |
+| 2026-06-12 | *(本次)* | **M2** | LangGraph adapter + SQLite 持久化:`adapters/langgraph.py`(StateGraph 五節點 + SqliteSaver + interrupt)、`WorkPlanRunner` 門面、A1–A8 測試(含 in-process 與 subprocess 真 kill 續跑)、D9 import 邊界守門測試、`examples/demo_resume.py`。三個 sub-agent 平行開發(adapter 本體 / E2E 測試 / 邊界測試)後整合 |
 
-> 後續里程碑進度(M2–M5)依此表持續追記。
+> 後續里程碑進度(M3–M5)依此表持續追記。
 
 ## 文件導覽
 

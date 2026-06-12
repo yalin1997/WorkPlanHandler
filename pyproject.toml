@@ -20,6 +20,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["slow: 跑得慢的測試(subprocess 級),日常以 -m 'not slow' 跳過"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
