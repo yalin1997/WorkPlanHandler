@@ -12,7 +12,7 @@ dependencies = []          # 核心零依賴(D9)
 [project.optional-dependencies]
 langgraph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]
 llm = ["langchain>=0.3", "langchain-anthropic"]
-dev = ["pytest>=8", "ruff>=0.4"]
+dev = ["pytest>=8", "ruff>=0.4", "pre-commit>=4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

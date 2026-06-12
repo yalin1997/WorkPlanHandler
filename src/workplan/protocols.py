@@ -9,6 +9,7 @@
   - Verifier : 驗收(hard / soft / human,可組合)
   - PlanStore: 持久化(MVP=LangGraph checkpointer，Phase3=Temporal/Postgres)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,8 +23,8 @@ class StepOutput:
     """Executor 的執行結果。"""
 
     content: Any
-    artifacts: dict[str, Any] | None = None   # 產生的檔案 / 中間物
-    error: str | None = None                  # 執行期錯誤(非驗收失敗)
+    artifacts: dict[str, Any] | None = None  # 產生的檔案 / 中間物
+    error: str | None = None  # 執行期錯誤(非驗收失敗)
 
 
 @dataclass
@@ -31,10 +32,10 @@ class VerificationResult:
     """Verifier 的判定結果 —— 驅動 advance / retry / replan / escalate。"""
 
     passed: bool
-    score: float = 0.0                        # 0~1，軟驗收用
-    feedback: str = ""                        # 失敗時回饋給 Planner/Executor 做反思
-    needs_human: bool = False                 # human gate 觸發
-    layer: str = "soft"                       # D10:判定所屬層(hard/soft/human)
+    score: float = 0.0  # 0~1，軟驗收用
+    feedback: str = ""  # 失敗時回饋給 Planner/Executor 做反思
+    needs_human: bool = False  # human gate 觸發
+    layer: str = "soft"  # D10:判定所屬層(hard/soft/human)
 
 
 @runtime_checkable

@@ -5,6 +5,7 @@
   - 整個 `PlanState` 可序列化(I2),交給 PlanStore 持久化以支援長任務的中斷續跑。
   - 本檔不依賴任何 agent 框架(framework-agnostic),確保可插拔。
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -18,9 +19,9 @@ class StepStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     VERIFYING = "verifying"
-    DONE = "done"          # 已通過驗收
-    FAILED = "failed"      # 重試 / 重規劃次數用盡
-    BLOCKED = "blocked"    # 等待人工(human gate)
+    DONE = "done"  # 已通過驗收
+    FAILED = "failed"  # 重試 / 重規劃次數用盡
+    BLOCKED = "blocked"  # 等待人工(human gate)
 
 
 # 驗收方式:硬驗收(可程式判定)/ 軟驗收(LLM 評分)/ 人工驗收
@@ -37,12 +38,12 @@ class AcceptanceCriterion:
     以避免驗收標準被既有輸出合理化。
     """
 
-    description: str                       # 人類可讀的完成定義
+    description: str  # 人類可讀的完成定義
     kind: AcceptanceKind = "llm_judge"
     spec: dict[str, Any] = field(default_factory=dict)
     # programmatic: {"callable": <name/ref>} ；llm_judge: {"rubric": "..."}
-    threshold: float = 1.0                 # llm_judge 通過分數(0~1)
-    required: bool = True                  # D10:required 層失敗即短路;False=advisory
+    threshold: float = 1.0  # llm_judge 通過分數(0~1)
+    required: bool = True  # D10:required 層失敗即短路;False=advisory
     layer: Literal["hard", "soft", "human"] = "soft"  # D10 分層歸屬
 
 
@@ -55,16 +56,16 @@ class Step:
     """
 
     id: str
-    description: str                       # 要做什麼
-    acceptance: AcceptanceCriterion        # 怎樣算做完
+    description: str  # 要做什麼
+    acceptance: AcceptanceCriterion  # 怎樣算做完
     status: StepStatus = StepStatus.PENDING
-    attempts: int = 0                      # 已嘗試次數(retry 計數)
-    output: Any = None                     # 最近一次執行輸出
+    attempts: int = 0  # 已嘗試次數(retry 計數)
+    output: Any = None  # 最近一次執行輸出
     notes: list[str] = field(default_factory=list)
     # notes 存放 Reflexion 式的 verbal feedback / 失敗教訓(episodic)
-    origin: StepOrigin = "initial"         # D5/D6 來源追溯
-    parent_id: str | None = None           # 動態插步時記錄被誰拆出(ADaPT 式)
-    max_attempts: int = 2                  # 此步的 retry 上限(覆寫全域 K)
+    origin: StepOrigin = "initial"  # D5/D6 來源追溯
+    parent_id: str | None = None  # 動態插步時記錄被誰拆出(ADaPT 式)
+    max_attempts: int = 2  # 此步的 retry 上限(覆寫全域 K)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Step":
@@ -88,8 +89,8 @@ class Plan:
 
     goal: str
     steps: list[Step]
-    version: int = 1                       # 每次 replan 遞增,保留審計軌跡(D6)
-    revision_note: str = ""                # D6 本版為何被改(replan 理由)
+    version: int = 1  # 每次 replan 遞增,保留審計軌跡(D6)
+    revision_note: str = ""  # D6 本版為何被改(replan 理由)
 
     def insert_after(self, step_id: str, new_steps: list[Step]) -> None:
         """D5:在指定步驟後插入;new_steps 標記 origin="insert"。"""
@@ -104,7 +105,7 @@ class Plan:
                     ns.origin = "insert"
                     if ns.parent_id is None:
                         ns.parent_id = step_id
-                self.steps[idx + 1: idx + 1] = new_steps
+                self.steps[idx + 1 : idx + 1] = new_steps
                 return
         raise ValueError(f"insert_after:找不到步驟 {step_id!r}")
 
@@ -143,7 +144,7 @@ class Plan:
                 StepStatus.BLOCKED: "[!]",
                 StepStatus.FAILED: "[✗]",
             }.get(s.status, "[ ]")
-            lines.append(f"{mark} {i+1}. {s.description}")
+            lines.append(f"{mark} {i + 1}. {s.description}")
         return "\n".join(lines)
 
     @classmethod
@@ -161,8 +162,8 @@ class HumanGate:
     """D8:escalate 時記錄等待中的人工關卡。"""
 
     step_id: str
-    reason: str                  # 為何卡(連續失敗 / 高風險步驟)
-    asked_at: str                # ISO 時間
+    reason: str  # 為何卡(連續失敗 / 高風險步驟)
+    asked_at: str  # ISO 時間
     resolution: Literal["pending", "approved", "rejected", "edited"] = "pending"
     human_note: str = ""
 
@@ -179,11 +180,11 @@ class PlanState:
     """
 
     plan: Plan
-    cursor: int = 0                        # 目前執行到第幾個 step(index)
+    cursor: int = 0  # 目前執行到第幾個 step(index)
     history: list[dict[str, Any]] = field(default_factory=list)
-    replans: int = 0                       # 已重規劃次數
+    replans: int = 0  # 已重規劃次數
     status: PlanRunStatus = "running"
-    thread_id: str | None = None           # P3:對應持久化 thread
+    thread_id: str | None = None  # P3:對應持久化 thread
     pending_human: HumanGate | None = None  # D8:escalate 時填
 
     @property

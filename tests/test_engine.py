@@ -2,6 +2,7 @@
 
 全部使用 mock 元件(不呼叫任何 LLM 或真實工具,D3)。
 """
+
 from __future__ import annotations
 
 import json
@@ -83,9 +84,7 @@ def test_t1_happy_path_three_steps_all_pass():
     assert state.status == "done"
     assert all(s.status == StepStatus.DONE for s in state.plan.steps)
     per_step = ["step_started", "step_output", "verify_passed", "step_done"]
-    assert event_types(state) == (
-        ["plan_created"] + per_step * 3 + ["run_completed"]
-    )
+    assert event_types(state) == (["plan_created"] + per_step * 3 + ["run_completed"])
 
 
 # ---------------------------------------------------------------- T2
@@ -109,9 +108,7 @@ def test_t2_retry_second_step_fails_once_then_passes():
 
 # ---------------------------------------------------------------- T3
 def test_t3_replan_after_k_failures_keeps_done_prefix():
-    verifier = MockVerifier(
-        script={"s2": [failed("不行"), failed("還是不行")]}
-    )
+    verifier = MockVerifier(script={"s2": [failed("不行"), failed("還是不行")]})
     tail = Plan(
         goal="測試目標",
         steps=[make_step("s2b"), make_step("s3b")],
@@ -158,8 +155,11 @@ def escalate_after_exhaustion() -> engine.Decision:
     )
     dec = engine.initialize(make_plan("s1", "s2", "s3"))
     return drive(
-        dec, MockExecutor(), verifier,
-        planner=MockPlanner(tails=[tail]), max_replans=1,
+        dec,
+        MockExecutor(),
+        verifier,
+        planner=MockPlanner(tails=[tail]),
+        max_replans=1,
     )
 
 
@@ -185,9 +185,7 @@ def test_t5_human_resume_approved_continues_to_done():
     dec = escalate_after_exhaustion()
     state = dec.state
 
-    gate = replace(
-        state.pending_human, resolution="approved", human_note="人工放行"
-    )
+    gate = replace(state.pending_human, resolution="approved", human_note="人工放行")
     dec = engine.on_human_resolved(state, gate)
     assert dec.action == Action.EXECUTE  # 還有 s3b
     assert state.status == "running"
@@ -219,8 +217,8 @@ def test_t6_insert_steps_mid_run_keeps_cursor_and_version():
 
     assert dec.action == Action.EXECUTE
     assert [s.id for s in state.plan.steps] == ["s1", "s2", "s2x", "s2y", "s3"]
-    assert state.cursor == 1            # cursor 不變
-    assert state.plan.version == 1      # version 不變(D5 插步 ≠ replan)
+    assert state.cursor == 1  # cursor 不變
+    assert state.plan.version == 1  # version 不變(D5 插步 ≠ replan)
     s2x = state.plan.steps[2]
     assert s2x.origin == "insert"
     assert s2x.parent_id == "s2"
@@ -278,9 +276,7 @@ def test_t8_serialization_roundtrip_of_intermediate_state():
     assert restored.history == mid.history
 
     # 還原後可續跑至 done(中斷續跑的前提)
-    dec = drive(
-        engine.Decision(Action.RETRY, restored), executor, MockVerifier()
-    )
+    dec = drive(engine.Decision(Action.RETRY, restored), executor, MockVerifier())
     assert dec.action == Action.DONE
     assert dec.state.status == "done"
     assert dec.state.cursor == 3

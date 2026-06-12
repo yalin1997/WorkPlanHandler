@@ -3,6 +3,7 @@
 可程式控制每個 step 的 pass/fail 序列:script[step_id] 是
 VerificationResult 佇列,依呼叫順序消耗;耗盡或未列入者回預設結果。
 """
+
 from __future__ import annotations
 
 from ..models import PlanState, Step

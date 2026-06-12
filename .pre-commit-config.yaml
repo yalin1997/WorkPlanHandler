@@ -1,0 +1,22 @@
+# 市面常見 Python pre-commit hooks(安裝:pre-commit install)
+# 每次 git commit 自動掃描;手動全量掃描:pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace        # 行尾空白
+      - id: end-of-file-fixer          # 檔尾保留單一換行
+      - id: mixed-line-ending          # 統一換行符(LF)
+        args: [--fix=lf]
+      - id: check-yaml                 # YAML 語法
+      - id: check-toml                 # TOML 語法(pyproject.toml)
+      - id: check-added-large-files    # 防誤 commit 大檔
+      - id: check-merge-conflict       # 防 commit 衝突標記
+      - id: debug-statements           # 防殘留 breakpoint()/pdb
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff-check                 # lint(規則沿用 pyproject 的 E/F/I)
+        args: [--fix]
+      - id: ruff-format                # 格式化

@@ -2,6 +2,7 @@
 
 Engine 拋例外而非吞掉——讓 adapter 決定如何記錄/中止(I6 保持純粹)。
 """
+
 from __future__ import annotations
 
 

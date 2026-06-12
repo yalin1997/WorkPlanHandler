@@ -3,6 +3,7 @@
 make_plan 回傳預先給定的 Plan;replan 依序回傳預錄的「未完成尾巴」
 (只含新尾巴步驟的 Plan,merge 由 engine.on_replanned 負責,D6)。
 """
+
 from __future__ import annotations
 
 from typing import Any
