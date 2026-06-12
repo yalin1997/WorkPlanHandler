@@ -1,11 +1,20 @@
 """WorkPlanHandler — 為 agent planner 設計的長任務執行管理模組。
 
-Phase 1 交付:本套件目前僅含「介面草圖」(models / protocols),
-用以具體化 docs/02-mvp-proposal.md 的設計提案。執行迴圈(engine)、
-verifiers、planners、adapters/langgraph 將於 Phase 2 實作。
+M1 交付:核心資料模型(models/events)、純函式狀態機(engine)、
+可插拔協定(protocols)與 mock 元件(executors/verifiers/planners)。
+本套件核心零框架依賴(D9);adapters/langgraph 於 M2 實作。
 """
+from . import engine
+from .engine import MAX_REPLANS, Action, Decision
+from .errors import (
+    IllegalTransitionError,
+    PlanIntegrityError,
+    WorkPlanError,
+)
+from .events import Event, EventType
 from .models import (
     AcceptanceCriterion,
+    HumanGate,
     Plan,
     PlanState,
     Step,
@@ -16,12 +25,22 @@ from .protocols import (
     Planner,
     PlanStore,
     StepOutput,
-    Verifier,
     VerificationResult,
+    Verifier,
 )
 
 __all__ = [
+    "engine",
+    "Action",
+    "Decision",
+    "MAX_REPLANS",
+    "WorkPlanError",
+    "PlanIntegrityError",
+    "IllegalTransitionError",
+    "Event",
+    "EventType",
     "AcceptanceCriterion",
+    "HumanGate",
     "Plan",
     "PlanState",
     "Step",
@@ -34,4 +53,4 @@ __all__ = [
     "VerificationResult",
 ]
 
-__version__ = "0.0.1.dev0"  # Phase 1: design sketch only
+__version__ = "0.1.0.dev0"

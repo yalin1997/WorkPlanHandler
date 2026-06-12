@@ -34,6 +34,7 @@ class VerificationResult:
     score: float = 0.0                        # 0~1，軟驗收用
     feedback: str = ""                        # 失敗時回饋給 Planner/Executor 做反思
     needs_human: bool = False                 # human gate 觸發
+    layer: str = "soft"                       # D10:判定所屬層(hard/soft/human)
 
 
 @runtime_checkable

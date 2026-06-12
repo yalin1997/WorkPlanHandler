@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workplan"
+version = "0.1.0.dev0"
+description = "Framework-agnostic 長任務執行管理模組:照計劃推進、逐階段驗收、失敗重試/重規劃、中斷續跑"
+requires-python = ">=3.11"
+dependencies = []          # 核心零依賴(D9)
+
+[project.optional-dependencies]
+langgraph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]
+llm = ["langchain>=0.3", "langchain-anthropic"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
