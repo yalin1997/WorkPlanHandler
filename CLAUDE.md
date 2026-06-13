@@ -12,13 +12,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 設計核心是 **framework-agnostic 可插拔模組**:核心邏輯零框架依賴,透過 adapter 掛載到 LangGraph(首發)等 Python agent 套件。
 
-## 目前狀態:這是「設計/規格」階段的 repo,尚無可執行實作
+## 目前狀態:M1–M5 已實作完成(MVP 機制達標,真實化待 M6)
 
-**動手前必讀**:目前 repo 內容**幾乎全是設計文件 + 介面草圖**,沒有可運作的 engine、沒有測試、沒有 build 工具。
+**動手前必讀**:本 repo **已非規格階段**——核心機制 M1–M5 全部實作完成,68 個測試全綠。
 
-- `src/workplan/` 只有 `models.py` / `protocols.py`,是**介面草圖(interface sketch)**,非功能成品(見檔頭 `⚠️` 註記)。`engine.py`、`verifiers/`、`planners/`、`executors/`、`adapters/` 等**都還不存在**,僅在規格中定義。
-- 沒有 `pyproject.toml`、沒有 `tests/`、沒有 CI(這是刻意的決策 D12:規劃階段只寫規格)。
+- `src/workplan/` 已有完整實作:`engine.py`(純函式狀態機)、`models.py`/`events.py`、`verifiers/`(Layered/Programmatic/HumanGate/Mock/LLMJudge)、`planners/`(Mock/LLM/External)、`executors/`(Mock/Callable)、`audit/`(render)、`adapters/langgraph.py`。`protocols.py` 仍標「介面草圖」字樣但已是落地契約。
+- 已有 `pyproject.toml`(核心 `dependencies=[]` + optional extras)、`tests/`(pytest)、pre-commit(ruff)。**尚無 CI**——這是 M6 待補項(D12「動工再建」已到期)。
+- **驗證深度提醒**:M4/M5 的 LLM 元件(planner/judge)至今**只用離線 stub 測過,從未對真模型驗證**。stub 證明「接線正確」,不等於「真效果」(judge 重現性、結構化輸出穩定性、recitation 抗漂移)。真 LLM 端到端實測排在 M6。
 - 文件以**繁體中文**撰寫(技術名詞保留英文)。
+
+> 里程碑現況見 `README.md` 進度表與「開發流程 Log」;規格仍以 `docs/phase2/` 為準(衝突以 `00` 決策表為最終依據)。
 
 ## 唯一的設計權威來源(Source of Truth)
 
@@ -58,26 +61,35 @@ Planner ──Plan──▶ Engine(純函式狀態機)◀──Executor
 
 打包對應此鐵則:核心零依賴,adapter/LLM 為 optional extra(`pip install workplan[langgraph,llm]`)。
 
-## 實作順序(里程碑,M1–M3 不需 LLM key)
+## 里程碑(M1–M5 ✅ 已完成;M6 進行中規劃)
 
 依「純 mock 首發」(D3)排序,先證明骨架再接真 LLM:
-- **M1** models+events+engine + 六路徑單測(pass/fail/retry/replan/insert/escalate),全用 mock 元件。
-- **M2** SqliteSaver + langgraph adapter;驗收重點 = **kill process 後同 thread_id 續跑**。
-- **M3** 分層 verifier + human gate(`interrupt()`)。
-- **M4** 真 LLM planner/judge;**M5** 審計輸出 + E2E demo。
+- **M1 ✅** models+events+engine + 六路徑單測(pass/fail/retry/replan/insert/escalate),全用 mock 元件。
+- **M2 ✅** SqliteSaver + langgraph adapter;驗收重點 = **kill process 後同 thread_id 續跑**。
+- **M3 ✅** 分層 verifier + human gate(`interrupt()`)。
+- **M4 ✅** 真 LLM planner/judge(provider-agnostic 注入);**M5 ✅** 審計輸出 + CallableExecutor + E2E demo。
+- **M6(硬化與真實化,新增)** 真 LLM 端到端一次性實測(燒 key 驗證 judge/planner)+ CI(GitHub Actions)+ 乾淨環境安裝測試 + 文件同步。作為 MVP 收尾與 Phase 3 的閘門,細節見 `docs/phase2/00 §4`。
+- **Phase 3(需求驅動,非排期驅動)** DAG 並行、Temporal exactly-once、`LangChainToolExecutor`/子 agent executor。詳見 `docs/phase2/00 §4`;在沒有真實使用情境前不預先投入(YAGNI)。
 
 ## 開發指令
 
-目前**尚未建立** build/test/lint 工具鏈(D12)。唯一可跑的健全性檢查是介面草圖的 import:
+工具鏈已建立(pytest + ruff + pre-commit)。建議用 uv 建環境:
 
 ```bash
-python3 -c "import sys; sys.path.insert(0,'src'); from workplan import Plan, Step, AcceptanceCriterion, PlanState; print('ok')"
+uv venv .venv
+uv pip install -p .venv -e ".[langgraph,llm,dev]"   # 完整(含 adapter 與 LLM extras)
+
+.venv/bin/pytest -q                 # 全套(68 測試)
+.venv/bin/pytest -q -m "not slow"   # 日常(跳過 subprocess 級真 kill 測試)
+.venv/bin/pytest tests/test_engine.py::test_retry -q   # 單一測試
+.venv/bin/ruff check . && .venv/bin/ruff format --check .   # lint/format(pre-commit 也會跑)
 ```
 
-開始 M1 實作時,依 `docs/phase2/00 §3` 建立 `pyproject.toml`(核心 `dependencies = []`,adapter/llm/dev 為 optional extras)與 `pytest`。屆時單一測試以 `pytest tests/test_engine.py::test_retry -q` 形式執行。
+純核心(零依賴,M1 mock demo 即可跑)只需 `uv pip install -p .venv -e ".[dev]"`。
+demo 在 `examples/`(`demo_mock`/`demo_resume`/`demo_layered`/`demo_llm_injection`/`demo_e2e`/`demo_research_llm`)。
 
 ## Git / PR 慣例
 
-- 開發分支:`claude/agent-task-execution-survey-ass5p3`(在此開發、commit、push)。
-- `main` 是 PR 的 base(目前是一個空 root commit,因 repo 起始為空)。PR 對 `main` 開。
+- 開發分支:每個里程碑用獨立 `claude/<task>` 分支開發、commit、push(如 M5 用 `claude/m5-milestone-planning-ha33w9`)。實際分支以當次任務指示為準。
+- `main` 是 PR 的 base。PR 對 `main` 開;**未經明確要求不自動開 PR**。
 - 文件與 commit message 用繁體中文;與需求方互動採**階段問答**釐清需求後再動工。

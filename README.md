@@ -27,6 +27,9 @@
 | **M3** | 分層 verifier(hard→soft→human,任一 required 層失敗即短路)+ human gate(`interrupt()`)+ 完整 HITL 矩陣 | ✅ 完成 |
 | **M4** | 真 LLM planner / judge(provider-agnostic 模型注入)+ ExternalPlanner ingest;LLM 元件以 stub 離線測試 | ✅ 完成 |
 | **M5** | 審計輸出(`audit/`:JSON 事件流 + Markdown 摘要 + 寫檔)+ `CallableExecutor`(通用橋接,recitation 注入 + retry feedback)+ 整合 E2E demo + 真 LLM 階段研究報告 demo(分層驗收實際攔截並修正一次失敗) | ✅ 完成 |
+| **M6** | 硬化與真實化(中期評核新增):真 LLM 端到端一次性實測(燒 key 驗證 planner/judge)+ CI(GitHub Actions)+ 乾淨環境安裝測試 + 文件同步。MVP 收尾與 Phase 3 閘門,規格見 `docs/phase2/00 §4.1` | 📋 規劃中 |
+
+> **里程碑現況(中期評核)**:M1–M5 機制完整、68 測試全綠,但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**——「接線正確」已證,「真效果」待 M6 實測。Phase 3(DAG 並行 / Temporal exactly-once)改為**需求驅動**,僅 `LangChainToolExecutor`(接真工具)優先保留,其餘等真實使用情境出現再排(見 `docs/phase2/00 §4.2`)。
 
 已實作的模組(`src/workplan/`):
 
