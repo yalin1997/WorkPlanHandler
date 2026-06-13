@@ -18,7 +18,7 @@
 
 ## 目前進度
 
-**M1–M4 已完成**:核心純函式狀態機 + LangGraph adapter 持久化(kill 後同 thread_id 續跑)+ 分層驗收閘門(hard→soft→human)與完整 HITL(approved/rejected/edited)+ 真 LLM planner / judge(provider-agnostic 模型注入,Anthropic/OpenAI/Google 皆可)+ 外部計劃 ingest。M1–M3 全 mock 不需 key;M4 的 LLM 元件離線測試用 stub,真連線才需 key。
+**M1–M5 已完成(MVP 達標)**:核心純函式狀態機 + LangGraph adapter 持久化(kill 後同 thread_id 續跑)+ 分層驗收閘門(hard→soft→human)與完整 HITL(approved/rejected/edited)+ 真 LLM planner / judge(provider-agnostic 模型注入,Anthropic/OpenAI/Google 皆可)+ 外部計劃 ingest + 審計輸出(JSON 事件流 + Markdown 摘要)+ CallableExecutor(通用橋接,recitation 注入)+ 端到端 demo。M1–M3 全 mock 不需 key;M4/M5 的 LLM 元件離線測試用 stub,真連線才需 key。
 
 | 里程碑 | 內容 | 狀態 |
 |--------|------|------|
@@ -26,7 +26,7 @@
 | **M2** | SqliteSaver + LangGraph adapter(kill process 後同 thread_id 續跑) | ✅ 完成 |
 | **M3** | 分層 verifier(hard→soft→human,任一 required 層失敗即短路)+ human gate(`interrupt()`)+ 完整 HITL 矩陣 | ✅ 完成 |
 | **M4** | 真 LLM planner / judge(provider-agnostic 模型注入)+ ExternalPlanner ingest;LLM 元件以 stub 離線測試 | ✅ 完成 |
-| M5 | 真 LLM executor + recitation 注入 + 審計輸出(JSON 事件流 + Markdown 摘要)+ E2E demo | 待動工 |
+| **M5** | 審計輸出(`audit/`:JSON 事件流 + Markdown 摘要 + 寫檔)+ `CallableExecutor`(通用橋接,recitation 注入 + retry feedback)+ 整合 E2E demo + 真 LLM 階段研究報告 demo(分層驗收實際攔截並修正一次失敗) | ✅ 完成 |
 
 已實作的模組(`src/workplan/`):
 
@@ -38,7 +38,10 @@ workplan/
 ├── protocols.py     # Planner / Executor / Verifier / PlanStore 可插拔協定
 ├── engine.py        # ★ 純函式狀態機(D2):initialize / on_executed / on_verified /
 │                    #   on_human_resolved / on_replanned / insert_steps
-├── executors/mock.py
+├── executors/
+│   ├── mock.py
+│   └── callable.py    # M5:CallableExecutor(通用橋接,recitation 注入 + retry feedback,零依賴)
+├── audit/render.py    # M5 ★ 審計輸出(D11):to_event_log / to_markdown / write_audit(純函式零依賴)
 ├── verifiers/
 │   ├── mock.py
 │   ├── base.py         # M3 ★ LayeredVerifier(D10 分層閘門 hard→soft→human,短路省 token)
@@ -52,7 +55,7 @@ workplan/
 └── adapters/langgraph.py  # M2:StateGraph + SqliteSaver + interrupt()(唯一依賴 langgraph 的檔案)
 ```
 
-真 LLM executor + recitation 注入、審計輸出(M5)尚未實作,規格見 [`docs/phase2/`](docs/phase2/)。
+> **M5 範圍說明**:`docs/phase2/00` 里程碑表將 M5 定為「審計 + E2E demo(D11)」,§5 另含「真 LLM 階段」(llm_planner + 真 executor 跑研究報告,分層驗收實際攔截)。本里程碑兩者皆交付:審計以零依賴純函式 `audit/` 實作;真 executor 以零依賴 `CallableExecutor`(規格 04 §B.3 的「通用橋接」)實作,LLM 接線留在 demo 的使用者函式(維持 D9 核心零依賴)。研究報告 demo 預設用離線 stub(不燒 key),換真連線只需注入 `ChatAnthropic` 實例。`LLMToolExecutor` / 子 agent executor 仍屬 Phase 3。
 
 > **D9/D4 依賴邊界**:`langgraph` 只准 `adapters/langgraph.py`;`langchain`/`anthropic` 只准 `planners/llm_planner.py` + `verifiers/llm_judge.py`。兩支 LLM 元件**刻意不被 `__init__` eager import**(否則會把 langchain 拖進零依賴核心),請以顯式路徑 `from workplan.planners.llm_planner import LLMPlanner` 取用。此邊界由 `tests/test_import_boundaries.py` 自動守門。
 
@@ -78,6 +81,8 @@ uv pip install -p .venv -e ".[langgraph,llm,dev]"   # + 真 LLM planner/judge(M4
 .venv/bin/python examples/demo_resume.py   # M2:s4 crash → 重啟 → 同 thread_id 續跑
 .venv/bin/python examples/demo_layered.py  # M3:hard 層短路 + retry + 高風險步驟 human gate → resume
 .venv/bin/python examples/demo_llm_injection.py  # M4:provider-agnostic 模型注入(離線 stub,不燒 key)
+.venv/bin/python examples/demo_e2e.py       # M5:整合 E2E(線性推進→s3 retry→crash 續跑→s5 human gate→審計輸出)
+.venv/bin/python examples/demo_research_llm.py  # M5:真 LLM 階段研究報告(分層驗收攔截並修正,離線 stub)
 ```
 
 [`examples/demo_mock.py`](examples/demo_mock.py) 的情境:三步計劃,第 2 步首次驗收失敗,
@@ -214,8 +219,9 @@ JSON round-trip OK(I2)
 | 2026-06-12 | `d55e1bc` | **M2** | LangGraph adapter + SQLite 持久化:`adapters/langgraph.py`(StateGraph 五節點 + SqliteSaver + interrupt)、`WorkPlanRunner` 門面、A1–A8 測試(含 in-process 與 subprocess 真 kill 續跑)、D9 import 邊界守門測試、`examples/demo_resume.py`。三個 sub-agent 平行開發(adapter 本體 / E2E 測試 / 邊界測試)後整合 |
 | 2026-06-13 | `0f36827` | **M3** | 分層驗收閘門:`verifiers/base.py`(`LayeredVerifier`,hard→soft→human 排序、required 層失敗即短路、needs_human 立即交人、advisory 不擋推進、fail-closed)、`programmatic.py`(hard,check 以註冊名引用保持 JSON 可序列化)、`human_gate.py`(human,D8)。測試:V1–V11 verifier 單測 + A9–A12 adapter 整合(LayeredVerifier 經圖跑通、完整 HITL 矩陣 rejected/edited、高風險步驟才掛人);`examples/demo_layered.py` |
 | 2026-06-13 | `dffe0ad` | **M4** | 真 LLM planner / judge(provider-agnostic 模型注入):`verifiers/llm_judge.py`(`LLMJudgeVerifier`,soft 層真 LLM 評分、threshold 重算、呼叫失敗/非結構化 fail-closed)、`planners/llm_planner.py`(`LLMPlanner`,make_plan 每步自帶 llm_judge soft 驗收 + I5 補預設、replan 只回尾巴用全新 id、可選 decompose)、`planners/external.py`(`ExternalPlanner`,D1 ingest、無 replanner 觸發 `ReplanNotSupported`)。兩支 LLM 元件只依賴 LangChain `with_structured_output` 標準介面,Anthropic/OpenAI/Google 皆可注入;預設 planner=sonnet、judge=haiku(不同模型減 self-preference)。D9 邊界測試精緻化為 langchain/anthropic 白名單(僅 llm 兩檔)。測試:judge/planner/external 三檔以 stub chat model 離線確定性驗證(不燒 key);`examples/demo_llm_injection.py` |
+| 2026-06-13 | _(本次)_ | **M5** | 審計輸出 + 真 LLM 階段(TDD 先寫測試再實作):`audit/render.py`(`to_event_log` 事件流深拷貝 I2、`to_markdown` 驗收摘要快照、`write_audit` 落檔 JSON envelope + MD,零依賴純函式)、`executors/callable.py`(`CallableExecutor` 通用橋接 + `ExecContext`:recitation 注入 + retry feedback,零依賴,LLM 接線留在使用者函式)。測試:`test_audit.py`(序列化往返 / 快照 / 落檔 / §4.1 payload schema)、`test_executors.py`(recitation spy / feedback / 型別守門)、`test_research_e2e.py`(離線 stub 研究報告經 adapter 跑通,hard 層攔截一次→修正通過);`audit/` 納入 D9 import 邊界守門。demo:`examples/demo_e2e.py`(§5 五項整合)、`examples/demo_research_llm.py`(真 LLM 階段,離線 stub) |
 
-> 後續里程碑進度(M5)依此表持續追記。
+> MVP(M1–M5)已達標:`≥5 步、含故意失敗的長任務,全程照計劃推進、逐階段自動驗收、失敗自我修正、中斷後續跑,並輸出可審計紀錄`(doc 00 §5 整體 DoD)。
 
 ## 文件導覽
 
