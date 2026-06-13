@@ -10,6 +10,7 @@ from .engine import MAX_REPLANS, Action, Decision
 from .errors import (
     IllegalTransitionError,
     PlanIntegrityError,
+    ReplanNotSupported,
     WorkPlanError,
 )
 from .events import Event, EventType
@@ -38,6 +39,7 @@ __all__ = [
     "WorkPlanError",
     "PlanIntegrityError",
     "IllegalTransitionError",
+    "ReplanNotSupported",
     "Event",
     "EventType",
     "AcceptanceCriterion",

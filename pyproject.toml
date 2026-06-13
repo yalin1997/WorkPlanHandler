@@ -11,6 +11,10 @@ dependencies = []          # 核心零依賴(D9)
 
 [project.optional-dependencies]
 langgraph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]
+# llm:預設接 Claude(Anthropic)開箱即用。改接 OpenAI / Google 等 provider
+# 時,自行安裝對應 langchain 整合(如 langchain-openai / langchain-google-genai),
+# 再以 model_name="openai:..." 走 init_chat_model,或直接把該 provider 的
+# ChatModel 實例傳給 LLMPlanner(model=...) / LLMJudgeVerifier(model=...)。
 llm = ["langchain>=0.3", "langchain-anthropic"]
 dev = ["pytest>=8", "ruff>=0.4", "pre-commit>=4"]
 
