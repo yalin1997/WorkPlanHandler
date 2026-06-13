@@ -174,7 +174,7 @@ JSON round-trip OK(I2)
 | 2026-06-12 | `a7679cf` | — | 加入 pre-commit hooks(pre-commit-hooks v6 + ruff check/format),統一全 repo 程式碼格式 |
 | 2026-06-12 | `76e3853` | — | README 補使用方式與開發 log;新增 `examples/demo_mock.py` |
 | 2026-06-12 | `d55e1bc` | **M2** | LangGraph adapter + SQLite 持久化:`adapters/langgraph.py`(StateGraph 五節點 + SqliteSaver + interrupt)、`WorkPlanRunner` 門面、A1–A8 測試(含 in-process 與 subprocess 真 kill 續跑)、D9 import 邊界守門測試、`examples/demo_resume.py`。三個 sub-agent 平行開發(adapter 本體 / E2E 測試 / 邊界測試)後整合 |
-| 2026-06-13 | `(本次)` | **M3** | 分層驗收閘門:`verifiers/base.py`(`LayeredVerifier`,hard→soft→human 排序、required 層失敗即短路、needs_human 立即交人、advisory 不擋推進、fail-closed)、`programmatic.py`(hard,check 以註冊名引用保持 JSON 可序列化)、`human_gate.py`(human,D8)。測試:V1–V11 verifier 單測 + A9–A12 adapter 整合(LayeredVerifier 經圖跑通、完整 HITL 矩陣 rejected/edited、高風險步驟才掛人);`examples/demo_layered.py` |
+| 2026-06-13 | `0f36827` | **M3** | 分層驗收閘門:`verifiers/base.py`(`LayeredVerifier`,hard→soft→human 排序、required 層失敗即短路、needs_human 立即交人、advisory 不擋推進、fail-closed)、`programmatic.py`(hard,check 以註冊名引用保持 JSON 可序列化)、`human_gate.py`(human,D8)。測試:V1–V11 verifier 單測 + A9–A12 adapter 整合(LayeredVerifier 經圖跑通、完整 HITL 矩陣 rejected/edited、高風險步驟才掛人);`examples/demo_layered.py` |
 
 > 後續里程碑進度(M4–M5)依此表持續追記。
 
