@@ -12,13 +12,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 設計核心是 **framework-agnostic 可插拔模組**:核心邏輯零框架依賴,透過 adapter 掛載到 LangGraph(首發)等 Python agent 套件。
 
-## 目前狀態:M1–M5 已實作完成(MVP 機制達標,真實化待 M6)
+## 目前狀態:M1–M5 完成,M6(最小可整合 MVP)收尾中
 
-**動手前必讀**:本 repo **已非規格階段**——核心機制 M1–M5 全部實作完成,68 個測試全綠。
+**動手前必讀**:本 repo **已非規格階段**——核心機制 M1–M5 全部實作完成,M6 工程基線已補齊,**75 個測試全綠**(含 slow 共 77),僅剩 M6-3 燒 key 實測待人工執行。
 
-- `src/workplan/` 已有完整實作:`engine.py`(純函式狀態機)、`models.py`/`events.py`、`verifiers/`(Layered/Programmatic/HumanGate/Mock/LLMJudge)、`planners/`(Mock/LLM/External)、`executors/`(Mock/Callable)、`audit/`(render)、`adapters/langgraph.py`。`protocols.py` 仍標「介面草圖」字樣但已是落地契約。
-- 已有 `pyproject.toml`(核心 `dependencies=[]` + optional extras)、`tests/`(pytest)、pre-commit(ruff)。**尚無 CI**——這是 M6 待補項(D12「動工再建」已到期)。
-- **驗證深度提醒**:M4/M5 的 LLM 元件(planner/judge)至今**只用離線 stub 測過,從未對真模型驗證**。stub 證明「接線正確」,不等於「真效果」(judge 重現性、結構化輸出穩定性、recitation 抗漂移)。真 LLM 端到端實測排在 M6。
+- `src/workplan/` 已有完整實作:`engine.py`(純函式狀態機)、`models.py`/`events.py`、`verifiers/`(Layered/Programmatic/HumanGate/Mock/LLMJudge)、`planners/`(Mock/LLM/External)、`executors/`(Mock/Callable)、`audit/`(render)、`adapters/langgraph.py`。`protocols.py` 已為 stable public contract(0.1.0)。
+- 已有 `pyproject.toml`(核心 `dependencies=[]` + optional extras,version `0.1.0`)、`tests/`(pytest)、pre-commit(ruff)、**CI(`.github/workflows/ci.yml`)**(M6-1)。整合入口 quickstart 見 `examples/quickstart_integration.py`(M6-5)。
+- **驗證深度提醒**:M4/M5 的 LLM 元件(planner/judge)至今**只用離線 stub 測過**;stub 證明「接線正確」≠「真效果」。真模型實測 harness 已備(`scripts/m6_real_llm_probe.py`,M6-3),**真連線量測(judge 重現性 / fail-closed 率 / 跨 provider)待燒 key 執行**——文件中所有「provider 皆可」一律標「介面相容、尚未實測」直到 probe 跑完。
+- **MVP 定位(誠實)**:首版 MVP = **LangGraph 外掛**;framework-agnostic 核心已就緒,但持久化/HITL/續跑等電池暫時只透過 `adapters/langgraph.py` 供應,非 LangGraph 一級路徑留待需求驅動。散布走 git install(未上 PyPI)。
 - 文件以**繁體中文**撰寫(技術名詞保留英文)。
 
 > 里程碑現況見 `README.md` 進度表與「開發流程 Log」;規格仍以 `docs/phase2/` 為準(衝突以 `00` 決策表為最終依據)。
@@ -61,32 +62,36 @@ Planner ──Plan──▶ Engine(純函式狀態機)◀──Executor
 
 打包對應此鐵則:核心零依賴,adapter/LLM 為 optional extra(`pip install workplan[langgraph,llm]`)。
 
-## 里程碑(M1–M5 ✅ 已完成;M6 進行中規劃)
+## 里程碑(M1–M5 ✅;M6 最小可整合 MVP,收尾中)
 
 依「純 mock 首發」(D3)排序,先證明骨架再接真 LLM:
 - **M1 ✅** models+events+engine + 六路徑單測(pass/fail/retry/replan/insert/escalate),全用 mock 元件。
 - **M2 ✅** SqliteSaver + langgraph adapter;驗收重點 = **kill process 後同 thread_id 續跑**。
 - **M3 ✅** 分層 verifier + human gate(`interrupt()`)。
 - **M4 ✅** 真 LLM planner/judge(provider-agnostic 注入);**M5 ✅** 審計輸出 + CallableExecutor + E2E demo。
-- **M6(硬化與真實化,新增)** 真 LLM 端到端一次性實測(燒 key 驗證 judge/planner)+ CI(GitHub Actions)+ 乾淨環境安裝測試 + 文件同步。作為 MVP 收尾與 Phase 3 的閘門,細節見 `docs/phase2/00 §4`。
+- **M6 最小可整合 MVP** — 目標:外部使用者把模組整合進自己 agent、串自己的真實 LLM。已完成不需 key 的 5 項:CI(M6-1)、git install 驗證(M6-2,`scripts/verify_clean_install.sh`)、釘 public API + `0.1.0`(M6-4,`tests/test_public_api.py`)、整合 quickstart(M6-5,`examples/quickstart_integration.py`)、probe harness + 誠實定位(M6-3 harness / M6-6 文件)。**唯一待人工**:M6-3 燒 key 跑 `scripts/m6_real_llm_probe.py` 取得真模型量測。細節見 `docs/phase2/00 §4.1`。
 - **Phase 3(需求驅動,非排期驅動)** DAG 並行、Temporal exactly-once、`LangChainToolExecutor`/子 agent executor。詳見 `docs/phase2/00 §4`;在沒有真實使用情境前不預先投入(YAGNI)。
 
 ## 開發指令
 
-工具鏈已建立(pytest + ruff + pre-commit)。建議用 uv 建環境:
+工具鏈已建立(pytest + ruff + pre-commit + CI)。建議用 uv 建環境:
 
 ```bash
 uv venv .venv
 uv pip install -p .venv -e ".[langgraph,llm,dev]"   # 完整(含 adapter 與 LLM extras)
 
-.venv/bin/pytest -q                 # 全套(68 測試)
-.venv/bin/pytest -q -m "not slow"   # 日常(跳過 subprocess 級真 kill 測試)
+.venv/bin/pytest -q                 # 全套(77 測試,含 slow)
+.venv/bin/pytest -q -m "not slow"   # 日常(跳過 subprocess 級真 kill 測試;CI 跑這個)
 .venv/bin/pytest tests/test_engine.py::test_retry -q   # 單一測試
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # lint/format(pre-commit 也會跑)
+
+bash scripts/verify_clean_install.sh           # M6-2:乾淨環境 git install 驗證
+ANTHROPIC_API_KEY=... python scripts/m6_real_llm_probe.py   # M6-3:真 LLM 穩定度實測(燒 key)
 ```
 
 純核心(零依賴,M1 mock demo 即可跑)只需 `uv pip install -p .venv -e ".[dev]"`。
-demo 在 `examples/`(`demo_mock`/`demo_resume`/`demo_layered`/`demo_llm_injection`/`demo_e2e`/`demo_research_llm`)。
+整合入口:`examples/quickstart_integration.py`(把你的 agent+LLM 接進來,離線可跑)。
+其餘 demo 在 `examples/`(`demo_mock`/`demo_resume`/`demo_layered`/`demo_llm_injection`/`demo_e2e`/`demo_research_llm`)。
 
 ## Git / PR 慣例
 

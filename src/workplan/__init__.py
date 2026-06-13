@@ -1,8 +1,14 @@
-"""WorkPlanHandler — 為 agent planner 設計的長任務執行管理模組。
+"""WorkPlanHandler — 為 agent planner 設計的長任務執行管理模組(0.1.0)。
 
-M1 交付:核心資料模型(models/events)、純函式狀態機(engine)、
-可插拔協定(protocols)與 mock 元件(executors/verifiers/planners)。
-本套件核心零框架依賴(D9);adapters/langgraph 於 M2 實作。
+本頂層命名空間是**零框架依賴的穩定公開面**(見 ``__all__`` 與
+tests/test_public_api.py):核心資料模型(models/events)、純函式狀態機
+(engine)、可插拔協定(protocols)與 mock 元件。
+
+需要 LangGraph 整合或真 LLM 元件時,以顯式路徑取用(刻意不在此 eager import,
+以維持核心零依賴 D9):
+  - ``from workplan.adapters.langgraph import WorkPlanRunner``  # extra: langgraph
+  - ``from workplan.planners.llm_planner import LLMPlanner``    # extra: llm
+  - ``from workplan.verifiers.llm_judge import LLMJudgeVerifier``  # extra: llm
 """
 
 from . import engine
@@ -56,4 +62,4 @@ __all__ = [
     "VerificationResult",
 ]
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"

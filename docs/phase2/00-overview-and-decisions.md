@@ -116,21 +116,37 @@ dev       = ["pytest", "ruff", "mypy"]
 | **M3** 分層驗收 | LayeredVerifier + programmatic + human_gate | D10,D8 | hard 失敗短路、human gate 觸發 `interrupt()` 並可 resume |
 | **M4** 真 Planner/Judge | llm_planner + llm_judge(預設 Claude) | D1,D4 | 給 goal 能產含驗收條件之 Plan;judge 評分可重現;外部 Plan ingest 路徑通 |
 | **M5** 審計 + E2E demo | audit render + CallableExecutor(recitation)+ 端到端 demo | D11 | JSON event log + Markdown 摘要產出;§5 demo 全數通過 |
-| **M6** 硬化與真實化 *(中期評核新增)* | 真 LLM 端到端實測 + CI + 乾淨安裝 + 文件同步 | D4,D12 | 見下方 §4.1 |
+| **M6** 最小可整合 MVP *(中期評核新增)* | CI + git install + 跨 provider 真 LLM 穩定度測試 + 釘 public API + executor 整合 quickstart + 誠實定位 | D4,D9,D12 | 見下方 §4.1 |
 
 > M1–M3 是「**證明骨架**」(mock,去風險);M4–M5 是「**證明價值機制**」(真 LLM 接線 + 驗收賣點,但以離線 stub 驗證);M6 是「**證明真實價值**」(真模型實測)+ 工程硬化,作為 MVP 收尾與 Phase 3 的閘門。
 
-### 4.1 M6 硬化與真實化(中期評核後新增)
+### 4.1 M6 最小可整合 MVP(中期評核後新增,目標導向重定義)
 
-**背景**:M1–M5 機制完整且 68 測試全綠,但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**。stub 證明「接線正確」≠「真效果」。M6 把這段缺口補上,並補齊先前刻意延後(D12)的工程基線。
+**目標(reframe)**:M6 完成後要能推出一版 **MVP,讓外部使用者把本模組整合進自己的 agent、串接自己的真實 LLM** 獲得流程控管能力。注意這比原 M6「燒一次 key 證明自己 demo 跑得動」的**內部信心**導向高一階——M6 的驗收標準是「**外部接得進來**」,不只是「**它能跑**」。
 
-**範圍(DoD)**:
-1. **真 LLM 端到端一次性實測**:燒一次 key 跑 `examples/demo_research_llm.py` 真連線(`ChatAnthropic`),確認 `LLMPlanner` 結構化輸出穩定、`LLMJudgeVerifier` 評分在重跑下可重現(±容忍區間)、recitation 確實注入 prompt。產出一份實測紀錄(可審計輸出存檔)。
-2. **CI**:GitHub Actions 跑 `pytest -m "not slow"` + `ruff check/format --check`(純核心 + dev extras;LLM/langgraph 測試在對應 extras job 或以 stub 覆蓋)。
-3. **乾淨環境安裝測試**:在空 venv 驗證 `pip install "workplan[langgraph,llm]"` 可裝可 import(optional extras 邊界正確)。
-4. **文件同步**:`CLAUDE.md`/`README` 與實際狀態一致(中期評核已處理大部分)。
+**背景**:M1–M5 機制完整且 68 測試全綠,但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**;stub 證明「接線正確」≠「真效果」。同時對外整合所需的散布、版本契約、整合指南、CI 等工程基線(先前 D12 刻意延後)尚未補齊。
 
-> M6 **不引入新核心機制**,純為「去除『沒在真實世界跑過』的未知風險」+ 工程硬化。
+**範圍決策(與需求方確認)**:
+- **整合範圍**:MVP **只做 LangGraph 外掛**。framework-agnostic 核心已就緒,但持久化/HITL/續跑等「電池」暫時只透過 `adapters/langgraph.py` 供應;非 LangGraph 的一級整合路徑(內建 runner / raw-engine 持久化 pattern)留待需求驅動。**文件需誠實如此定位**。
+- **散布**:MVP 以 **git install** 交付(`pip install "git+...#egg=workplan[...]"`),不上 PyPI。砍掉 PyPI 帳號/發佈 CI/語意化版號治理。
+- **文件語言**:整合 quickstart / API 參考**維持繁中**。
+
+**DoD(收斂後,依執行順序)**:
+
+| # | 項目 | 必要性 | 驗收 |
+|---|------|--------|------|
+| 1 | **CI(GitHub Actions)** | git install 需綠燈背書;最便宜先建信心基線 | workflow 跑 `pytest -m "not slow"` + `ruff check` + `ruff format --check`;核心 + dev extras job,langgraph/llm 以 extras job 或 stub 覆蓋 |
+| 2 | **乾淨環境 git install 測試** | 驗證對外安裝路徑 + optional extras 邊界 | 空 venv `pip install "git+<repo>#egg=workplan[langgraph,llm]"` 可裝可 import;以腳本/文件化步驟可重現 |
+| 3 | **跨 provider 真 LLM 穩定度測試** | 核心對外承諾(串真實 LLM)+ 最大產品風險(judge 在真模型下的 fail-closed 觸發率、結構化輸出穩定度) | Anthropic(`ChatAnthropic`)跑 `demo_research_llm` 真連線數次,記錄 `LLMJudgeVerifier` 評分重現性(±容忍區間)、fail-closed 觸發率、recitation 確實注入;OpenAI 至少跑一次煙霧測確認 `with_structured_output` 通且 fail-closed 不亂觸發。產出可審計實測紀錄存檔 |
+| 4 | **釘 public API + 版號 `0.1.0`** | 使用者要依賴的契約現仍標「介面草圖」 | `protocols.py` 去草圖字樣、標明 stable 表面;`workplan.__init__` 匯出面確定為 public;`pyproject.toml` version `0.1.0` |
+| 5 | **executor 整合 quickstart(繁中)** | 使用者真正的整合膠水在 executor 端,目前文件最薄 | 一份端到端範例文件:把使用者 agent 的單步執行 + 自己的 LLM 接進 `CallableExecutor` + `WorkPlanRunner`;範例本身有測試覆蓋(stub) |
+| 6 | **文件同步 + 誠實定位** | MVP 對外發話須與事實一致 | `README`/`CLAUDE.md` 標明「MVP = LangGraph 整合;framework-agnostic 核心已就緒,非 LangGraph 電池待後續」;provider 相容承諾依第 3 項實測結果校準(實測過的講事實,未測的標「相同介面,理論相容、尚未實測」) |
+
+**工程紀律**:M6 所有**新增程式碼一律 TDD**——先寫 failing test 再實作(install 測試、API 表面斷言測試、quickstart 範例的 stub 測試、CI 本身即由既有測試套件背書)。
+
+**前置依賴**:第 3 項需要可用的 API key(Anthropic 必需、OpenAI 選配),由需求方提供或在其環境執行;其餘項目(1/2/4/5/6)**不需 key**,可先全部完成。
+
+> M6 **不引入新核心機制**,純為「去除『沒在真實世界跑過』的未知風險」+ 對外整合工程硬化,作為 MVP 收尾與 Phase 3 的閘門。
 
 ### 4.2 Phase 3 重新定調:需求驅動,而非排期驅動(中期評核)
 

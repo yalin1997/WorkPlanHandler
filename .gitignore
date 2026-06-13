@@ -1,6 +1,11 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
+dist/
 .venv/
 venv/
 .env
+
+# M6-3 真 LLM probe 的執行產物(實測紀錄,不入庫)
+m6_probe_out/

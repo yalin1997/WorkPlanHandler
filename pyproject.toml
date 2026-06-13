@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "workplan"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Framework-agnostic 長任務執行管理模組:照計劃推進、逐階段驗收、失敗重試/重規劃、中斷續跑"
 requires-python = ">=3.11"
 dependencies = []          # 核心零依賴(D9)
@@ -23,7 +23,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]   # "." 讓測試可 import examples/ 內的 quickstart 範例
 markers = ["slow: 跑得慢的測試(subprocess 級),日常以 -m 'not slow' 跳過"]
 
 [tool.ruff.lint]

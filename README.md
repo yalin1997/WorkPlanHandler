@@ -18,7 +18,7 @@
 
 ## 目前進度
 
-**M1–M5 已完成(MVP 達標)**:核心純函式狀態機 + LangGraph adapter 持久化(kill 後同 thread_id 續跑)+ 分層驗收閘門(hard→soft→human)與完整 HITL(approved/rejected/edited)+ 真 LLM planner / judge(provider-agnostic 模型注入,Anthropic/OpenAI/Google 皆可)+ 外部計劃 ingest + 審計輸出(JSON 事件流 + Markdown 摘要)+ CallableExecutor(通用橋接,recitation 注入)+ 端到端 demo。M1–M3 全 mock 不需 key;M4/M5 的 LLM 元件離線測試用 stub,真連線才需 key。
+**M1–M5 已完成(MVP 達標)**:核心純函式狀態機 + LangGraph adapter 持久化(kill 後同 thread_id 續跑)+ 分層驗收閘門(hard→soft→human)與完整 HITL(approved/rejected/edited)+ 真 LLM planner / judge(provider-agnostic 模型注入,介面上 Anthropic/OpenAI/Google 皆可;以 Anthropic 為主路徑,跨 provider 真實穩定度待 M6-3 實測)+ 外部計劃 ingest + 審計輸出(JSON 事件流 + Markdown 摘要)+ CallableExecutor(通用橋接,recitation 注入)+ 端到端 demo。M1–M3 全 mock 不需 key;M4/M5 的 LLM 元件離線測試用 stub,真連線才需 key。
 
 | 里程碑 | 內容 | 狀態 |
 |--------|------|------|
@@ -27,9 +27,9 @@
 | **M3** | 分層 verifier(hard→soft→human,任一 required 層失敗即短路)+ human gate(`interrupt()`)+ 完整 HITL 矩陣 | ✅ 完成 |
 | **M4** | 真 LLM planner / judge(provider-agnostic 模型注入)+ ExternalPlanner ingest;LLM 元件以 stub 離線測試 | ✅ 完成 |
 | **M5** | 審計輸出(`audit/`:JSON 事件流 + Markdown 摘要 + 寫檔)+ `CallableExecutor`(通用橋接,recitation 注入 + retry feedback)+ 整合 E2E demo + 真 LLM 階段研究報告 demo(分層驗收實際攔截並修正一次失敗) | ✅ 完成 |
-| **M6** | 硬化與真實化(中期評核新增):真 LLM 端到端一次性實測(燒 key 驗證 planner/judge)+ CI(GitHub Actions)+ 乾淨環境安裝測試 + 文件同步。MVP 收尾與 Phase 3 閘門,規格見 `docs/phase2/00 §4.1` | 📋 規劃中 |
+| **M6** | 最小可整合 MVP(中期評核重定義,目標導向):CI(GitHub Actions)+ 乾淨環境 git install 測試 + 跨 provider 真 LLM 穩定度測試(燒 key 驗證 planner/judge 真效果)+ 釘 public API 與版號 `0.1.0` + executor 整合 quickstart(繁中)+ 誠實定位。MVP 收尾與 Phase 3 閘門,規格見 `docs/phase2/00 §4.1` | 🚧 收尾中(6 項中 5 項已交付;唯 M6-3 燒 key 實測待人工跑) |
 
-> **里程碑現況(中期評核)**:M1–M5 機制完整、68 測試全綠,但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**——「接線正確」已證,「真效果」待 M6 實測。Phase 3(DAG 並行 / Temporal exactly-once)改為**需求驅動**,僅 `LangChainToolExecutor`(接真工具)優先保留,其餘等真實使用情境出現再排(見 `docs/phase2/00 §4.2`)。
+> **里程碑現況**:M1–M5 機制完整、M6 工程基線已補齊,**77 測試全綠**(日常 `-m "not slow"` 為 75),但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**——「接線正確」已證,「真效果」待 M6-3 燒 key 實測(harness 已備:`scripts/m6_real_llm_probe.py`)。**M6 重定義為「最小可整合 MVP」**:目標是讓外部使用者把模組整合進自己的 agent、串接自己的真實 LLM。範圍決策——MVP **只做 LangGraph 外掛**(framework-agnostic 核心已就緒,非 LangGraph 電池待需求驅動)、以 **git install** 交付(不上 PyPI)、文件**維持繁中**。Phase 3(DAG 並行 / Temporal exactly-once)改為**需求驅動**,僅 `LangChainToolExecutor`(接真工具)優先保留,其餘等真實使用情境出現再排(見 `docs/phase2/00 §4.2`)。
 
 已實作的模組(`src/workplan/`):
 
@@ -62,24 +62,33 @@ workplan/
 
 > **D9/D4 依賴邊界**:`langgraph` 只准 `adapters/langgraph.py`;`langchain`/`anthropic` 只准 `planners/llm_planner.py` + `verifiers/llm_judge.py`。兩支 LLM 元件**刻意不被 `__init__` eager import**(否則會把 langchain 拖進零依賴核心),請以顯式路徑 `from workplan.planners.llm_planner import LLMPlanner` 取用。此邊界由 `tests/test_import_boundaries.py` 自動守門。
 
-## 快速開始(現階段:mock demo)
+## 快速開始
 
-M1 階段所有元件皆為 mock,**不需任何 API key** 即可體驗完整的
-plan → execute → verify(gate)→ retry → done 迴圈。
+**整合者最短路徑**:`examples/quickstart_integration.py` 示範把你自己的 agent 單步執行
++ 你的 LLM 接進 `CallableExecutor` + `WorkPlanRunner`,獲得照計劃推進、逐階段驗收、
+retry/續跑/HITL。離線可跑(用假 LLM),換真模型只需注入 `ChatAnthropic` 等實例。
+
+> **MVP 定位(誠實)**:首版 MVP = **LangGraph 外掛**——持久化/HITL/續跑等電池透過
+> `workplan[langgraph]` 的 adapter 供應;framework-agnostic 純核心(engine)雖零依賴可
+> 獨立使用,但非 LangGraph 的一級整合路徑留待需求驅動。散布走 git install(未上 PyPI)。
 
 ### 安裝
 
 ```bash
-# 建議用 uv(或自行 python -m venv)
+# 對外整合者(git install):
+pip install "git+https://github.com/yalin1997/WorkPlanHandler.git#egg=workplan[langgraph,llm]"
+
+# 本地開發(建議 uv):
 uv venv .venv
-uv pip install -p .venv -e ".[dev]"                 # 純核心(M1 demo 即可跑)
-uv pip install -p .venv -e ".[langgraph,dev]"       # + LangGraph adapter(M2 持久化/續跑)
-uv pip install -p .venv -e ".[langgraph,llm,dev]"   # + 真 LLM planner/judge(M4;預設接 Claude)
+uv pip install -p .venv -e ".[dev]"                 # 純核心(mock demo 即可跑)
+uv pip install -p .venv -e ".[langgraph,dev]"       # + LangGraph adapter(持久化/續跑)
+uv pip install -p .venv -e ".[langgraph,llm,dev]"   # + 真 LLM planner/judge(預設接 Claude)
 ```
 
 ### 跑 demo
 
 ```bash
+.venv/bin/python examples/quickstart_integration.py  # ★ 整合 quickstart:把你的 agent+LLM 接進來(離線可跑)
 .venv/bin/python examples/demo_mock.py     # M1:engine 迴圈 + 驗收閘門 + retry
 .venv/bin/python examples/demo_resume.py   # M2:s4 crash → 重啟 → 同 thread_id 續跑
 .venv/bin/python examples/demo_layered.py  # M3:hard 層短路 + retry + 高風險步驟 human gate → resume
@@ -141,7 +150,12 @@ res = runner.resume("job-42", resolution="approved", note="人工放行")
 
 主要使用情境是**你自己注入模型實例接通 LLM**。`LLMPlanner` / `LLMJudgeVerifier`
 只依賴 LangChain 標準介面 `model.with_structured_output(Schema).invoke(msgs)`,
-因此 Anthropic / OpenAI / Google 的 ChatModel 都能直接傳進來——跨 provider 相容是免費的。
+因此 Anthropic / OpenAI / Google 的 ChatModel 在介面上都能直接傳進來。
+
+> **驗證程度(誠實標註)**:目前以 **Anthropic 為主路徑設計**(預設模型即 Claude)。
+> 跨 provider 因走相同 LangChain 介面而**理論相容**,但 `with_structured_output` 在
+> 各家行為不完全一致;OpenAI/Google 的真模型穩定度**尚未實測(待 M6-3 燒 key 驗證)**。
+> 真效果(judge 重現性、結構化輸出穩定度)的實測由 `scripts/m6_real_llm_probe.py` 量測。
 
 ```python
 from workplan.planners.llm_planner import LLMPlanner      # 顯式路徑(D9:不經 __init__)
@@ -189,10 +203,14 @@ JSON round-trip OK(I2)
 ### 跑測試
 
 ```bash
-.venv/bin/pytest -q               # 全套:engine + adapter + verifier + planner/judge + D9 import 邊界
-.venv/bin/pytest -q -m "not slow" # 日常(跳過 subprocess 級的真 kill 測試)
+.venv/bin/pytest -q               # 全套(77):engine + adapter + verifier + planner/judge + D9 邊界 + public API + quickstart + probe
+.venv/bin/pytest -q -m "not slow" # 日常(75;跳過 subprocess 級的真 kill 測試;CI 跑這個)
 # M4 LLM 元件以 stub chat model 離線測試(不燒 key);未裝 llm extra 時自動 skip。
+
+bash scripts/verify_clean_install.sh   # M6-2:空 venv git install + extras 邊界驗證
 ```
+
+> CI(`.github/workflows/ci.yml`)在 push/PR 自動跑:`ruff check/format --check` + 純核心 job(extras 測試自動 skip)+ 完整 extras job,Python 3.11/3.12 矩陣。
 
 ## 開發流程
 

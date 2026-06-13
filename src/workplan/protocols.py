@@ -1,13 +1,15 @@
-"""WorkPlanHandler — 可插拔策略介面(介面草圖 / interface sketch)。
+"""WorkPlanHandler — 可插拔策略介面(stable public contract,0.1.0)。
 
-⚠️ Phase 1 交付物:設計草圖,定義 Planner / Executor / Verifier / PlanStore 四個
-   可插拔點。任何一個都可以被使用者替換成自己的實作,核心執行迴圈不變。
+本模組定義 Planner / Executor / Verifier / PlanStore 四個可插拔點,以及執行迴圈
+交換的兩個資料載體 StepOutput / VerificationResult。**這是 MVP 對外整合者依賴
+的穩定契約**:任何整合者自帶的元件只要滿足這些 Protocol 即可插入,核心執行
+迴圈(engine)不變。簽章變動視為破壞性變更,須隨版號管理(見 tests/test_public_api.py)。
 
-這四個 Protocol 是「可插拔模組」承諾的具體化:
+四個可插拔點:
   - Planner  : 規劃 / 重規劃(可換不同 LLM 或符號 planner)
   - Executor : 落地執行(可換不同工具集 / agent runtime)
   - Verifier : 驗收(hard / soft / human,可組合)
-  - PlanStore: 持久化(MVP=LangGraph checkpointer，Phase3=Temporal/Postgres)
+  - PlanStore: 持久化(MVP=LangGraph checkpointer;Phase 3 視需求接 Temporal/Postgres)
 """
 
 from __future__ import annotations
