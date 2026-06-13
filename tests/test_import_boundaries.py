@@ -149,6 +149,8 @@ def test_workplan_imports_without_langgraph():
         # 子套件 __init__ 不得 eager import LLM 元件(否則此處會炸):
         import workplan.planners       # ExternalPlanner / MockPlanner(零依賴)
         import workplan.verifiers      # Layered/Programmatic/HumanGate/Mock(零依賴)
+        import workplan.audit          # 審計 render(零依賴)
+        from workplan.audit import to_event_log, to_markdown, write_audit
         from workplan.planners import ExternalPlanner
         from workplan.errors import ReplanNotSupported
 

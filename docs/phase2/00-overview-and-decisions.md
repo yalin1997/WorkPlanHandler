@@ -115,9 +115,30 @@ dev       = ["pytest", "ruff", "mypy"]
 | **M2** 持久化 + adapter | SqlitePlanStore + langgraph adapter | D7,P1,P3 | mock 任務跑通;**kill process 後同 thread_id 續跑**;狀態一致 |
 | **M3** 分層驗收 | LayeredVerifier + programmatic + human_gate | D10,D8 | hard 失敗短路、human gate 觸發 `interrupt()` 並可 resume |
 | **M4** 真 Planner/Judge | llm_planner + llm_judge(預設 Claude) | D1,D4 | 給 goal 能產含驗收條件之 Plan;judge 評分可重現;外部 Plan ingest 路徑通 |
-| **M5** 審計 + E2E demo | audit render + 端到端 demo | D11 | JSON event log + Markdown 摘要產出;§5 demo 全數通過 |
+| **M5** 審計 + E2E demo | audit render + CallableExecutor(recitation)+ 端到端 demo | D11 | JSON event log + Markdown 摘要產出;§5 demo 全數通過 |
+| **M6** 硬化與真實化 *(中期評核新增)* | 真 LLM 端到端實測 + CI + 乾淨安裝 + 文件同步 | D4,D12 | 見下方 §4.1 |
 
-> M1–M3 是「**證明骨架**」(mock,去風險);M4–M5 是「**證明價值**」(真 LLM + 驗收賣點)。
+> M1–M3 是「**證明骨架**」(mock,去風險);M4–M5 是「**證明價值機制**」(真 LLM 接線 + 驗收賣點,但以離線 stub 驗證);M6 是「**證明真實價值**」(真模型實測)+ 工程硬化,作為 MVP 收尾與 Phase 3 的閘門。
+
+### 4.1 M6 硬化與真實化(中期評核後新增)
+
+**背景**:M1–M5 機制完整且 68 測試全綠,但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**。stub 證明「接線正確」≠「真效果」。M6 把這段缺口補上,並補齊先前刻意延後(D12)的工程基線。
+
+**範圍(DoD)**:
+1. **真 LLM 端到端一次性實測**:燒一次 key 跑 `examples/demo_research_llm.py` 真連線(`ChatAnthropic`),確認 `LLMPlanner` 結構化輸出穩定、`LLMJudgeVerifier` 評分在重跑下可重現(±容忍區間)、recitation 確實注入 prompt。產出一份實測紀錄(可審計輸出存檔)。
+2. **CI**:GitHub Actions 跑 `pytest -m "not slow"` + `ruff check/format --check`(純核心 + dev extras;LLM/langgraph 測試在對應 extras job 或以 stub 覆蓋)。
+3. **乾淨環境安裝測試**:在空 venv 驗證 `pip install "workplan[langgraph,llm]"` 可裝可 import(optional extras 邊界正確)。
+4. **文件同步**:`CLAUDE.md`/`README` 與實際狀態一致(中期評核已處理大部分)。
+
+> M6 **不引入新核心機制**,純為「去除『沒在真實世界跑過』的未知風險」+ 工程硬化。
+
+### 4.2 Phase 3 重新定調:需求驅動,而非排期驅動(中期評核)
+
+原規劃 Phase 3 含 DAG 並行、Temporal exactly-once、`LangChainToolExecutor`/子 agent executor。中期評核結論:**這些是大投入,且在沒有真實使用情境前先做有 YAGNI 風險**——尤其 exactly-once 副作用只有在接「真實有副作用的工具」時才有意義。
+
+調整:
+- **保留且優先**:`LangChainToolExecutor`(讓模組能接真工具,是「真實使用」的前提)。
+- **需求驅動才啟動**:DAG 並行拓撲(D5 目前線性+動態插步已夠用)、Temporal exactly-once 持久化。等出現真實用戶任務證明需要時再排期,不預先投入。
 
 ---
 
