@@ -28,9 +28,14 @@ from workplan.adapters.langgraph import (  # noqa: E402
     build_graph,
 )
 from workplan.executors import MockExecutor  # noqa: E402
-from workplan.models import Plan, StepStatus  # noqa: E402
+from workplan.models import AcceptanceCriterion, Plan, Step, StepStatus  # noqa: E402
 from workplan.planners import MockPlanner  # noqa: E402
-from workplan.verifiers import MockVerifier  # noqa: E402
+from workplan.verifiers import (  # noqa: E402
+    HumanGateVerifier,
+    LayeredVerifier,
+    MockVerifier,
+    ProgrammaticVerifier,
+)
 from workplan.verifiers.mock import failed, needs_human  # noqa: E402
 
 PER_STEP_EVENTS = ["step_started", "step_output", "verify_passed", "step_done"]
@@ -302,3 +307,131 @@ def test_two_threads_isolated(tmp_path):
     assert state_b.plan.goal == "目標B"
     assert state_b.cursor == 3
     assert [s.id for s in state_b.plan.steps] == ["b1", "b2", "b3"]
+
+
+# ================================================================== M3
+# 分層驗收 + 完整 HITL 矩陣經 adapter 跑通(A7 已驗 approved;此處補
+# LayeredVerifier 整合、rejected/edited 兩條 HITL 路徑、高風險步驟才掛人。
+# ==================================================================
+
+
+def hard_check_step(step_id: str, check_name: str) -> Step:
+    """帶 hard 驗收的步驟;check 以「註冊名」(str)引用——經 adapter
+    持久化時 spec 必須保持純 JSON,不能塞 callable(I2)。"""
+    return Step(
+        id=step_id,
+        description=f"步驟 {step_id}",
+        acceptance=AcceptanceCriterion(
+            description=f"{step_id} 完成",
+            kind="programmatic",
+            spec={"check": check_name},
+            layer="hard",
+        ),
+    )
+
+
+# ---------------------------------------------------------------- A9
+def test_layered_verifier_through_graph_retry(tmp_path):
+    """LayeredVerifier 經 adapter 跑通:hard 層首次 fail → 短路 → retry →
+    第二次 pass → done。驗分層結果能直接驅動 engine 路由,且 VERIFY_FAILED
+    記到 hard 層。"""
+    calls = {"n": 0}
+
+    def flaky(out, st):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return (False, 0.0, "hard:首次缺必填欄位")
+        return (True, 1.0, "")
+
+    soft = MockVerifier()  # hard 過後才跑
+    verifier = LayeredVerifier(
+        layers=[
+            ("hard", ProgrammaticVerifier(checks={"flaky": flaky}), True),
+            ("soft", soft, True),
+        ]
+    )
+    plan = Plan(
+        goal="分層驗收",
+        steps=[make_step("s1"), hard_check_step("s2", "flaky"), make_step("s3")],
+    )
+
+    with make_runner(tmp_path, verifier=verifier) as runner:
+        res = runner.run(plan=plan)
+
+    assert res.status == "done"
+    assert res.state.plan.steps[1].attempts == 1  # s2 retry 一次
+    retried = [e for e in res.state.history if e["type"] == "step_retried"]
+    assert len(retried) == 1 and retried[0]["step_id"] == "s2"
+    vf = [e for e in res.state.history if e["type"] == "verify_failed"]
+    assert len(vf) == 1 and vf[0]["payload"]["layer"] == "hard"
+
+
+# ---------------------------------------------------------------- A10
+def test_hitl_rejected_terminates_run(tmp_path):
+    """HITL rejected:human gate → interrupt → resume(rejected) → 整個 run 失敗。"""
+    verifier = MockVerifier(script={"s2": [needs_human("需人工確認 s2")]})
+    with make_runner(tmp_path, verifier=verifier) as runner:
+        res = runner.run(plan=make_plan("s1", "s2", "s3"))
+        tid = res.thread_id
+        assert res.interrupted is True
+
+        res2 = runner.resume(tid, resolution="rejected", note="不予放行")
+
+    assert res2.status == "failed"
+    assert res2.state.plan.steps[1].status == StepStatus.FAILED
+    assert res2.state.cursor == 1  # 停在 s2,未推進
+    rf = [e for e in res2.state.history if e["type"] == "run_failed"]
+    assert len(rf) == 1 and rf[0]["payload"]["reason"] == "不予放行"
+
+
+# ---------------------------------------------------------------- A11
+def test_hitl_edited_retries_then_completes(tmp_path):
+    """HITL edited:human gate → resume(edited) → 帶人工指示重做本步 → done。"""
+    verifier = MockVerifier(script={"s2": [needs_human("需補充客群欄位")]})
+    with make_runner(tmp_path, verifier=verifier) as runner:
+        res = runner.run(plan=make_plan("s1", "s2", "s3"))
+        tid = res.thread_id
+        assert res.interrupted is True
+
+        res2 = runner.resume(tid, resolution="edited", note="補上客群欄位後重做")
+
+    assert res2.status == "done"
+    assert res2.state.cursor == 3
+    assert "補上客群欄位後重做" in res2.state.plan.steps[1].notes
+    resolved = [e for e in res2.state.history if e["type"] == "human_resolved"]
+    assert len(resolved) == 1 and resolved[0]["payload"]["resolution"] == "edited"
+
+
+# ---------------------------------------------------------------- A12
+def test_layered_human_gate_only_for_high_risk_step(tmp_path):
+    """LayeredVerifier 掛 human 層:只有 kind=='human' 的高風險步驟觸發
+    interrupt;一般步驟照常經 soft 層通過(視步驟風險才掛人)。"""
+    verifier = LayeredVerifier(
+        layers=[
+            ("soft", MockVerifier(), True),
+            ("human", HumanGateVerifier(), False),
+        ]
+    )
+    risky = Step(
+        id="s2",
+        description="發佈到正式環境",
+        acceptance=AcceptanceCriterion(
+            description="需人工核准發佈", kind="human", layer="human"
+        ),
+    )
+    plan = Plan(
+        goal="含高風險步驟的計劃",
+        steps=[make_step("s1"), risky, make_step("s3")],
+    )
+
+    with make_runner(tmp_path, verifier=verifier) as runner:
+        res = runner.run(plan=plan)
+        tid = res.thread_id
+        assert res.interrupted is True  # s1 通過(human 層不適用),卡在 s2
+        assert res.interrupt_payload["step_id"] == "s2"
+        assert runner.get_state(tid).cursor == 1
+
+        res2 = runner.resume(tid, resolution="approved", note="核准發佈")
+
+    assert res2.status == "done"
+    assert res2.state.cursor == 3
