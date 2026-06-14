@@ -27,9 +27,9 @@
 | **M3** | 分層 verifier(hard→soft→human,任一 required 層失敗即短路)+ human gate(`interrupt()`)+ 完整 HITL 矩陣 | ✅ 完成 |
 | **M4** | 真 LLM planner / judge(provider-agnostic 模型注入)+ ExternalPlanner ingest;LLM 元件以 stub 離線測試 | ✅ 完成 |
 | **M5** | 審計輸出(`audit/`:JSON 事件流 + Markdown 摘要 + 寫檔)+ `CallableExecutor`(通用橋接,recitation 注入 + retry feedback)+ 整合 E2E demo + 真 LLM 階段研究報告 demo(分層驗收實際攔截並修正一次失敗) | ✅ 完成 |
-| **M6** | 最小可整合 MVP(中期評核重定義,目標導向):CI(GitHub Actions)+ 乾淨環境 git install 測試 + 跨 provider 真 LLM 穩定度測試(燒 key 驗證 planner/judge 真效果)+ 釘 public API 與版號 `0.1.0` + executor 整合 quickstart(繁中)+ 誠實定位。MVP 收尾與 Phase 3 閘門,規格見 `docs/phase2/00 §4.1` | 🚧 收尾中(6 項中 5 項已交付;唯 M6-3 燒 key 實測待人工跑) |
+| **M6** | 最小可整合 MVP(中期評核重定義,目標導向):CI(GitHub Actions)+ 乾淨環境 git install 測試 + 跨 provider 真 LLM 穩定度測試(燒 key 驗證 planner/judge 真效果)+ 釘 public API 與版號 `0.1.0` + executor 整合 quickstart(繁中)+ 誠實定位。MVP 收尾與 Phase 3 閘門,規格見 `docs/phase2/00 §4.1` | ✅ 完成 |
 
-> **里程碑現況**:M1–M5 機制完整、M6 工程基線已補齊,**77 測試全綠**(日常 `-m "not slow"` 為 75),但 M4/M5 的 LLM 元件**至今只用離線 stub 驗證,未對真模型跑過**——「接線正確」已證,「真效果」待 M6-3 燒 key 實測(harness 已備:`scripts/m6_real_llm_probe.py`)。**M6 重定義為「最小可整合 MVP」**:目標是讓外部使用者把模組整合進自己的 agent、串接自己的真實 LLM。範圍決策——MVP **只做 LangGraph 外掛**(framework-agnostic 核心已就緒,非 LangGraph 電池待需求驅動)、以 **git install** 交付(不上 PyPI)、文件**維持繁中**。Phase 3(DAG 並行 / Temporal exactly-once)改為**需求驅動**,僅 `LangChainToolExecutor`(接真工具)優先保留,其餘等真實使用情境出現再排(見 `docs/phase2/00 §4.2`)。
+> **里程碑現況**:M1–M6 全部完成,**77 測試全綠**(日常 `-m "not slow"` 為 75)。M6-3 真 LLM 實測已以 Gemini-3.5-flash 跑完:judge 重現性 spread=0.0(5 次完全一致)、planner 產出 3 步驟且全有驗收條件、fail-closed 行為符合預期(`m6_probe_out/m6_probe_record.json`)。**M6 重定義為「最小可整合 MVP」**:目標是讓外部使用者把模組整合進自己的 agent、串接自己的真實 LLM。範圍決策——MVP **只做 LangGraph 外掛**(framework-agnostic 核心已就緒,非 LangGraph 電池待需求驅動)、以 **git install** 交付(不上 PyPI)、文件**維持繁中**。Phase 3(DAG 並行 / Temporal exactly-once)改為**需求驅動**,僅 `LangChainToolExecutor`(接真工具)優先保留,其餘等真實使用情境出現再排(見 `docs/phase2/00 §4.2`)。
 
 已實作的模組(`src/workplan/`):
 
@@ -154,8 +154,8 @@ res = runner.resume("job-42", resolution="approved", note="人工放行")
 
 > **驗證程度(誠實標註)**:目前以 **Anthropic 為主路徑設計**(預設模型即 Claude)。
 > 跨 provider 因走相同 LangChain 介面而**理論相容**,但 `with_structured_output` 在
-> 各家行為不完全一致;OpenAI/Google 的真模型穩定度**尚未實測(待 M6-3 燒 key 驗證)**。
-> 真效果(judge 重現性、結構化輸出穩定度)的實測由 `scripts/m6_real_llm_probe.py` 量測。
+> 各家行為不完全一致。**M6-3 實測結果(Gemini-3.5-flash)**:judge 重現性 spread=0.0、
+> planner 結構化輸出穩定可用;OpenAI 尚未實測。詳見 `m6_probe_out/m6_probe_record.json`。
 
 ```python
 from workplan.planners.llm_planner import LLMPlanner      # 顯式路徑(D9:不經 __init__)

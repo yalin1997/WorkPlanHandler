@@ -16,6 +16,12 @@ langgraph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]
 # 再以 model_name="openai:..." 走 init_chat_model,或直接把該 provider 的
 # ChatModel 實例傳給 LLMPlanner(model=...) / LLMJudgeVerifier(model=...)。
 llm = ["langchain>=0.3", "langchain-anthropic"]
+# ollama:本地 Ollama 部署(ChatOllama);接 Gemma / Llama / Qwen 等本地模型。
+# 已含 langchain(LLMPlanner/LLMJudgeVerifier 的模組頂層 import 需要),
+# 無需額外裝 [llm](除非要用 langchain-anthropic 的預設 init_chat_model 路徑)。
+# 使用:pip install 'workplan[ollama]',再把 ChatOllama 實例注入 model= 參數。
+ollama = ["langchain>=0.3", "langchain-ollama>=0.3"]
+google = ["langchain>=0.3", "langchain-google-genai>=2.0"]
 dev = ["pytest>=8", "ruff>=0.4", "pre-commit>=4"]
 
 [tool.setuptools.packages.find]

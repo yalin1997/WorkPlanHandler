@@ -14,11 +14,23 @@
 (tests/test_real_llm_probe.py);``main()`` 才真連線。無 key 時 main 直接跳過
 對應 provider,不會炸。
 
-**執行(燒 key,由人手動跑)**:
-    export ANTHROPIC_API_KEY=sk-...        # 必需
-    export OPENAI_API_KEY=sk-...           # 選配(OpenAI 煙霧測)
+**執行**:三種 provider 任選一或多個,皆可只跑部分:
+
+  Anthropic API key(燒 key):
+    export ANTHROPIC_API_KEY=sk-...
     python scripts/m6_real_llm_probe.py
-產出:一份可審計實測紀錄(JSON + Markdown)寫到 ./m6_probe_out/。
+
+  OpenAI API key(選配):
+    export OPENAI_API_KEY=sk-...
+    python scripts/m6_real_llm_probe.py
+
+  Ollama 本地模型(免 key;需先啟動 ollama serve 並 pull 模型):
+    pip install "workplan[ollama]"         # 一次性
+    export OLLAMA_MODEL=gemma4:26b         # 或 gemma4:26b 等;預設 gemma4:26b
+    python scripts/m6_real_llm_probe.py
+
+三個 provider 互為選配,未設的自動跳過。可同時設多個。
+產出:一份可審計實測紀錄(JSON)寫到 ./m6_probe_out/(需從 repo 根執行)。
 """
 
 from __future__ import annotations
@@ -88,6 +100,15 @@ def summarize(*, scores: list[float], passed: list[bool]) -> JudgeProbeReport:
 def run_judge_probe(judge: Any, *, runs: int = 5) -> JudgeProbeReport:
     """對固定輸入連跑 judge N 次,聚合分數與通過與否。"""
     state = PlanState(plan=Plan(goal="LLM 長任務管理綜述", steps=[_PROBE_STEP]))
+
+    messages = judge._build_messages(
+        _PROBE_STEP.acceptance.spec["rubric"], _PROBE_STEP, _PROBE_OUTPUT
+    )
+    print("[judge prompt >>>]")
+    for role, content in messages:
+        print(f"  {role}: {content}")
+    print("[<<<]")
+
     scores: list[float] = []
     passed: list[bool] = []
     for _ in range(runs):
@@ -117,13 +138,92 @@ def _build_openai():
     return ChatOpenAI(model="gpt-4.1-mini", temperature=0)
 
 
+def _build_google():
+    """Gemini API(以 GOOGLE_API_KEY 控制;預設 gemini-3.5-flash)。"""
+    if not os.getenv("GOOGLE_API_KEY"):
+        return None
+    model_name = os.getenv("GOOGLE_MODEL", "gemini-3.5-flash")
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+    except ImportError:
+        print("  · 未裝 langchain-google-genai,跳過 Google 測試")
+        print("    pip install 'workplan[google]' 後再執行")
+        return None
+    return ChatGoogleGenerativeAI(model=model_name, temperature=0)
+
+
+def _build_ollama():
+    """本地 Ollama 模型(預設 gemma4:26b;以 OLLAMA_MODEL / OLLAMA_BASE_URL 覆寫)。
+
+    執行前確認 Ollama 已啟動且模型已 pull:
+        ollama serve                      # 啟動服務(預設 localhost:11434)
+        ollama pull <model>               # 首次需拉取
+    環境變數:
+        OLLAMA_MODEL    模型名稱(預設 gemma4:26b;Gemma4 26b 對應 gemma4:26b)
+        OLLAMA_BASE_URL Ollama 服務位址(預設 http://localhost:11434)
+    """
+    model_name = os.getenv("OLLAMA_MODEL", "gemma4:26b")
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        from langchain_ollama import ChatOllama
+    except ImportError:
+        print("  · 未裝 langchain-ollama,跳過 Ollama 測試")
+        print("    pip install 'workplan[ollama]' 後再執行")
+        return None
+    return ChatOllama(model=model_name, base_url=base_url, temperature=0)
+
+
+def _probe_planner(model: Any, *, timeout_secs: int = 120) -> dict[str, Any]:
+    """呼叫 LLMPlanner.make_plan 一次,驗收巢狀 PlanDraft 結構化輸出是否完整。
+
+    純函式:注入任意 BaseChatModel;失敗一律回 {"success": False, "error": ...}
+    而非 raise,讓 main() 可以繼續記錄其他 provider 結果。
+    本地大模型 structured_output 推理慢,逾 timeout_secs 秒視為 timeout。
+    """
+    import concurrent.futures
+
+    from workplan.planners.llm_planner import LLMPlanner
+
+    def _run():
+        from workplan.planners.llm_planner import _PLAN_SYSTEM
+
+        goal = "上傳 file 到 google cloud（測試用，請只產 3 個步驟）"
+        ctx = {"max_steps": 3, "note": "probe only, keep it minimal"}
+        user_msg = f"目標:{goal}\n背景/約束:{ctx}"
+        print("[planner prompt >>>]")
+        print(f"  system: {_PLAN_SYSTEM}")
+        print(f"  user:   {user_msg}")
+        print("[<<<]")
+
+        planner = LLMPlanner(model=model)
+        plan = planner.make_plan(goal, ctx)
+        return {
+            "success": True,
+            "step_count": len(plan.steps),
+            "all_have_acceptance": all(s.acceptance is not None for s in plan.steps),
+            "warnings": planner.last_warnings,
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_run)
+        try:
+            return fut.result(timeout=timeout_secs)
+        except concurrent.futures.TimeoutError:
+            return {
+                "success": False,
+                "error": f"timeout after {timeout_secs}s (巢狀 schema 對本地模型太重)",
+            }
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+
 def _probe_recitation_injection() -> bool:
     """確認 CallableExecutor 把 recitation 接到 prompt 尾端(離線即可驗,不燒 key)。"""
     from workplan.executors.callable import CallableExecutor
 
     seen: dict[str, str] = {}
 
-    def fn(step, state, ctx):
+    def fn(step, _state, ctx):
         seen["prompt"] = ctx.with_recitation(f"做:{step.description}")
         return StepOutput(content="ok")
 
@@ -170,6 +270,36 @@ def main() -> int:
         r = run_judge_probe(LLMJudgeVerifier(model=oai), runs=1)
         record["openai_smoke"] = asdict(r)
         print(f"  score={r.scores} passed={r.passed}")
+
+    # (5) Google Gemini:judge 重現性(5 次) + planner 煙霧測(1 次)
+    google = _build_google()
+    google_model_name = os.getenv("GOOGLE_MODEL", "gemini-3.5-flash")
+    if google is None:
+        print("⚠ 未設 GOOGLE_API_KEY(或未裝 langchain-google-genai),跳過 Google 測試")
+        record["google"] = "skipped (no GOOGLE_API_KEY)"
+    else:
+        print(f"== Google judge 重現性(model={google_model_name},連跑 1 次)==")
+        g_judge = run_judge_probe(LLMJudgeVerifier(model=google), runs=5)
+        print(
+            f"  scores={g_judge.scores} mean={g_judge.mean:.3f} "
+            f"spread={g_judge.spread:.3f} non_pass={g_judge.non_pass_count}"
+        )
+
+        print(f"== Google planner 煙霧測(model={google_model_name},1 次)==")
+        g_planner = _probe_planner(google)
+        print(
+            f"  success={g_planner['success']} "
+            f"steps={g_planner.get('step_count', '-')} "
+            f"all_have_acceptance={g_planner.get('all_have_acceptance', '-')}"
+        )
+        if g_planner.get("warnings"):
+            print(f"  warnings={g_planner['warnings']}")
+
+        record["google"] = {
+            "model": google_model_name,
+            "judge": asdict(g_judge),
+            "planner_smoke": g_planner,
+        }
 
     json_path = out_dir / "m6_probe_record.json"
     json_path.write_text(

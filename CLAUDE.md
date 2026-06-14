@@ -14,11 +14,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 目前狀態:M1–M5 完成,M6(最小可整合 MVP)收尾中
 
-**動手前必讀**:本 repo **已非規格階段**——核心機制 M1–M5 全部實作完成,M6 工程基線已補齊,**75 個測試全綠**(含 slow 共 77),僅剩 M6-3 燒 key 實測待人工執行。
+**動手前必讀**:本 repo **已非規格階段**——核心機制 M1–M6 全部實作完成,**75 個測試全綠**(含 slow 共 77)。M6-3 真 LLM 實測已以 Gemini-3.5-flash 跑完,結果見 `m6_probe_out/m6_probe_record.json`。
 
 - `src/workplan/` 已有完整實作:`engine.py`(純函式狀態機)、`models.py`/`events.py`、`verifiers/`(Layered/Programmatic/HumanGate/Mock/LLMJudge)、`planners/`(Mock/LLM/External)、`executors/`(Mock/Callable)、`audit/`(render)、`adapters/langgraph.py`。`protocols.py` 已為 stable public contract(0.1.0)。
 - 已有 `pyproject.toml`(核心 `dependencies=[]` + optional extras,version `0.1.0`)、`tests/`(pytest)、pre-commit(ruff)、**CI(`.github/workflows/ci.yml`)**(M6-1)。整合入口 quickstart 見 `examples/quickstart_integration.py`(M6-5)。
-- **驗證深度提醒**:M4/M5 的 LLM 元件(planner/judge)至今**只用離線 stub 測過**;stub 證明「接線正確」≠「真效果」。真模型實測 harness 已備(`scripts/m6_real_llm_probe.py`,M6-3),**真連線量測(judge 重現性 / fail-closed 率 / 跨 provider)待燒 key 執行**——文件中所有「provider 皆可」一律標「介面相容、尚未實測」直到 probe 跑完。
+- **驗證深度**:M4/M5 的 LLM 元件以離線 stub 驗接線,M6-3 真模型實測已以 Gemini-3.5-flash 完成:judge spread=0.0(5 次完全一致)、planner 結構化輸出穩定可用、fail-closed 行為符合預期。OpenAI 尚未實測。實測紀錄:`m6_probe_out/m6_probe_record.json`。
 - **MVP 定位(誠實)**:首版 MVP = **LangGraph 外掛**;framework-agnostic 核心已就緒,但持久化/HITL/續跑等電池暫時只透過 `adapters/langgraph.py` 供應,非 LangGraph 一級路徑留待需求驅動。散布走 git install(未上 PyPI)。
 - 文件以**繁體中文**撰寫(技術名詞保留英文)。
 
@@ -69,7 +69,7 @@ Planner ──Plan──▶ Engine(純函式狀態機)◀──Executor
 - **M2 ✅** SqliteSaver + langgraph adapter;驗收重點 = **kill process 後同 thread_id 續跑**。
 - **M3 ✅** 分層 verifier + human gate(`interrupt()`)。
 - **M4 ✅** 真 LLM planner/judge(provider-agnostic 注入);**M5 ✅** 審計輸出 + CallableExecutor + E2E demo。
-- **M6 最小可整合 MVP** — 目標:外部使用者把模組整合進自己 agent、串自己的真實 LLM。已完成不需 key 的 5 項:CI(M6-1)、git install 驗證(M6-2,`scripts/verify_clean_install.sh`)、釘 public API + `0.1.0`(M6-4,`tests/test_public_api.py`)、整合 quickstart(M6-5,`examples/quickstart_integration.py`)、probe harness + 誠實定位(M6-3 harness / M6-6 文件)。**唯一待人工**:M6-3 燒 key 跑 `scripts/m6_real_llm_probe.py` 取得真模型量測。細節見 `docs/phase2/00 §4.1`。
+- **M6 最小可整合 MVP ✅** — CI(M6-1)、git install 驗證(M6-2)、真 LLM 實測(M6-3,Gemini-3.5-flash,`m6_probe_out/m6_probe_record.json`)、釘 public API `0.1.0`(M6-4)、整合 quickstart(M6-5)、誠實定位文件(M6-6)全部完成。細節見 `docs/phase2/00 §4.1`。
 - **Phase 3(需求驅動,非排期驅動)** DAG 並行、Temporal exactly-once、`LangChainToolExecutor`/子 agent executor。詳見 `docs/phase2/00 §4`;在沒有真實使用情境前不預先投入(YAGNI)。
 
 ## 開發指令
@@ -86,7 +86,7 @@ uv pip install -p .venv -e ".[langgraph,llm,dev]"   # 完整(含 adapter 與 LLM
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # lint/format(pre-commit 也會跑)
 
 bash scripts/verify_clean_install.sh           # M6-2:乾淨環境 git install 驗證
-ANTHROPIC_API_KEY=... python scripts/m6_real_llm_probe.py   # M6-3:真 LLM 穩定度實測(燒 key)
+GOOGLE_API_KEY=... python scripts/m6_real_llm_probe.py      # M6-3:真 LLM 穩定度實測(Gemini/Anthropic/OpenAI 皆可)
 ```
 
 純核心(零依賴,M1 mock demo 即可跑)只需 `uv pip install -p .venv -e ".[dev]"`。
