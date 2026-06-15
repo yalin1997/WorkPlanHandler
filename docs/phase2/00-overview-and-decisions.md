@@ -24,6 +24,11 @@
 | D10 | **Verifier 組合** | **分層閘門 hard→soft→human**,任一 required 層失敗即短路 | CompositeVerifier |
 | D11 | **審計輸出** | **JSON 事件流 + Markdown 摘要** | Audit、Events |
 | D12 | **工程基線** | **本階段只寫規格**,test/lint/CI 等動工再建 | — |
+| D13 | **MCP tool 整合** *(Phase 3)* | **Tier 2 gatekeeper 為主**(server 端驗收、沒過不發下一步),Tier 1 advisory 附帶;設計見 `phase3/01` | adapters/mcp_server |
+| D14 | **MCP 規劃權** *(Phase 3)* | **planning / replan 由 agent 負責**(它有 LLM+context);server 自帶 planner 為選配 | adapters/mcp_server |
+| D15 | **MCP 傳輸** *(Phase 3)* | **HTTP / fastmcp**,localhost-only、不做認證(auth/TLS/遠端 bind 列後續) | adapters/mcp_server |
+| D16 | **框架無關持久化** *(Phase 3)* | **JsonFilePlanStore**(每 thread 一 JSON 檔,零依賴);補首條非 LangGraph 持久化路徑 | stores/json_store |
+| D17 | **MCP 驗收機制** *(Phase 3)* | **宣告式 check 註冊表(hard,name+args)+ 選配 LLM-judge(soft)**;agent 的 plan 走 JSON 無法傳 callable | verifiers/builtin_checks |
 | P1 | *(已定預設)* `PlanState↔LangGraph` | 單一 channel + last-write-wins reducer(MVP 求簡;Phase 3 視需要拆 channel) | Adapter、Persistence |
 | P2 | *(已定預設)* 並行模型 | engine 核心**同步**,介面設計成 async-ready(方法不含 blocking I/O 假設) | Engine |
 | P3 | *(已定預設)* `thread_id` 來源 | 由呼叫端提供;未提供時模組產生 UUID 並回傳 | Adapter API |

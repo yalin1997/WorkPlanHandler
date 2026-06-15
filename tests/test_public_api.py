@@ -71,6 +71,9 @@ def test_optional_public_paths_when_extras_present():
         "workplan.planners.external": ("ExternalPlanner",),
         "workplan.executors.callable": ("CallableExecutor",),
         "workplan.audit": ("to_event_log", "to_markdown", "write_audit"),
+        "workplan.stores.json_store": ("JsonFilePlanStore",),
+        "workplan.verifiers.builtin_checks": ("BUILTIN_CHECKS",),
+        "workplan.adapters.mcp_server": ("Gatekeeper", "build_server", "main"),
     }
     for mod_name, names in optional.items():
         try:
