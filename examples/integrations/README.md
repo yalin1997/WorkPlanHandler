@@ -8,12 +8,18 @@
 | 檔案 | 情境 | 解決的問題 |
 |------|------|-----------|
 | [`langgraph_commender.py`](langgraph_commender.py) | LangGraph 架構:planner → commender → tool/summary | Commender 提早結束、不把計劃做完 |
+| [`mcp_gatekeeper.py`](mcp_gatekeeper.py) | MCP tool:agent 自己當 driver,每步 `submit` 交件受驗 | 「便條紙」式計劃缺真驗收,弱輸出被放行 |
+| [`mcp_gatekeeper_modes.py`](mcp_gatekeeper_modes.py) | MCP 驗收層配置:hard/soft 層 + advisory 開關 | 宣告了 server 擋不住的驗收層 → fail-open(B1);關閘門需有正當入口 |
 
 ## 執行方式
 
 ```bash
 # 需要 workplan[langgraph] extra
 python examples/integrations/langgraph_commender.py
+
+# MCP gatekeeper:純核心即可跑(離線),真 server 需 workplan[mcp]
+python examples/integrations/mcp_gatekeeper.py
+python examples/integrations/mcp_gatekeeper_modes.py   # 層配置 / advisory;soft 層需 workplan[llm]
 ```
 
 ## 如何新增一個整合紀錄
