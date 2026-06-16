@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import threading
 import time
 
@@ -24,8 +25,14 @@ from workplan.protocols import VerificationResult
 from workplan.stores.json_store import JsonFilePlanStore
 from workplan.verifiers import LayeredVerifier
 from workplan.verifiers.builtin_checks import BUILTIN_CHECKS
-from workplan.verifiers.llm_judge import JudgeVerdict, LLMJudgeVerifier
 from workplan.verifiers.programmatic import ProgrammaticVerifier
+
+# soft 層測試需 LLMJudgeVerifier(llm extra → langchain);未裝時只 skip 那兩個
+# 測試,B1 能力校驗 / advisory / B2 並發等純邏輯測試在純核心(core)環境照跑。
+_HAS_LLM = importlib.util.find_spec("langchain") is not None
+_requires_llm = pytest.mark.skipif(
+    not _HAS_LLM, reason="需要 llm extra:pip install 'workplan[llm]'"
+)
 
 
 def _hard_only_gk(tmp_path, **kw):
@@ -123,6 +130,8 @@ def test_advisory_skips_capability_validation(tmp_path):
 
 
 def _soft_gk(tmp_path, *, verdict_passed=True):
+    from workplan.verifiers.llm_judge import JudgeVerdict, LLMJudgeVerifier
+
     judge = LLMJudgeVerifier(
         model=StubChatModel(
             JudgeVerdict(
@@ -141,6 +150,7 @@ def _soft_gk(tmp_path, *, verdict_passed=True):
     return Gatekeeper(store=JsonFilePlanStore(root=tmp_path), verifier=verifier)
 
 
+@_requires_llm
 def test_soft_layer_enables_llm_judge_step(tmp_path):
     """配置 soft 層(stub judge)後,llm_judge 步可正常 start 並過驗收。"""
     gk = _soft_gk(tmp_path, verdict_passed=True)
@@ -150,6 +160,7 @@ def test_soft_layer_enables_llm_judge_step(tmp_path):
     assert v["may_advance"] is True
 
 
+@_requires_llm
 def test_soft_layer_fail_blocks(tmp_path):
     """soft 層判不過 → 不放行(真的有跑驗收,非 fail-open)。"""
     gk = _soft_gk(tmp_path, verdict_passed=False)
