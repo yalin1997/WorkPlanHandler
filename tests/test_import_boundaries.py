@@ -25,12 +25,13 @@ CORE_DIR = Path(__file__).parent.parent / "src" / "workplan"
 LLM_BINDING = {"langchain", "anthropic", "langchain_anthropic"}
 # langchain_core 是 langgraph 的轉移依賴(RunnableConfig 等),adapter 合法使用
 LANGCHAIN_FAMILY = LLM_BINDING | {"langchain_core"}
-# 整套框架(含 langgraph),供「除白名單外一律禁止」的核心檢查
-ALL_FRAMEWORKS = LANGCHAIN_FAMILY | {"langgraph"}
+# 整套框架(含 langgraph / fastmcp),供「除白名單外一律禁止」的核心檢查
+ALL_FRAMEWORKS = LANGCHAIN_FAMILY | {"langgraph", "fastmcp"}
 
 # 白名單:檔案(相對 CORE_DIR 的 posix 路徑)→ 允許的框架頂層模組集合
 FRAMEWORK_WHITELIST = {
     "adapters/langgraph.py": {"langgraph", "langchain_core"},
+    "adapters/mcp_server.py": {"fastmcp"},  # MCP gatekeeper:唯一 import fastmcp 的檔
     "planners/llm_planner.py": LANGCHAIN_FAMILY,
     "verifiers/llm_judge.py": LANGCHAIN_FAMILY,
 }

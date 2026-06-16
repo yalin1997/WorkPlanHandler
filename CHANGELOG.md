@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## Phase 3(進行中)— MCP gatekeeper 整合
+
+把驗收閘門包成一組 **MCP tool(HTTP / fastmcp)**,讓 agent 自己當 driver、用「呼叫工具」接入(對比 LangGraph adapter 的「交出控制流」),同時保住「沒過不發下一步」的驗收賣點。設計與決策見 [`docs/phase3/01-mcp-tool-integration-design.md`](docs/phase3/01-mcp-tool-integration-design.md)(決策 D13–D17)。
+
+- **6 個 tool**(`start`/`submit`/`current`/`plan`/`resolve`/`replan`):`submit` 在 server 端跑驗收,回 `may_advance`——不通過拿不到下一步(資訊槓桿;閘門為「軟但真實」,硬保證仍走 LangGraph adapter)。
+- **新元件**:`adapters/mcp_server.py`(唯一 import fastmcp;純邏輯 `Gatekeeper` 離線可測)、`stores/json_store.py`(`JsonFilePlanStore`,首條非 LangGraph 持久化路徑)、`verifiers/builtin_checks.py`(宣告式 check 註冊表,agent 經 JSON 引用)。
+- **驗收機制**:宣告式 check(hard)+ 選配 LLM-judge(soft);純宣告式零 key、離線可測。
+- **打包**:`pip install "workplan[mcp]"`;啟動 `python -m workplan.adapters.mcp_server`。
+- **測試**:離線單測 + fastmcp in-memory Client 協定測 + 跨實例續跑(@slow);真 HTTP 連線已手動煙霧測通過。
+
+---
+
 ## v0.1.0 — 最小可整合 MVP(M1–M6 完成)
 
 > **77 測試全綠**。M6-3 真 LLM 實測已以 Gemini-3.5-flash 跑完,結果見 `m6_probe_out/m6_probe_record.json`。
