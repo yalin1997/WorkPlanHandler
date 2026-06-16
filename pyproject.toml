@@ -22,6 +22,10 @@ llm = ["langchain>=0.3", "langchain-anthropic"]
 # 使用:pip install 'workplan[ollama]',再把 ChatOllama 實例注入 model= 參數。
 ollama = ["langchain>=0.3", "langchain-ollama>=0.3"]
 google = ["langchain>=0.3", "langchain-google-genai>=2.0"]
+# mcp:把驗收閘門包成 MCP tool(HTTP)供任何 MCP client(Claude Code / Cursor /
+# Codex / 自家 agent)接入。僅 adapters/mcp_server.py 可 import fastmcp(D9)。
+# 純宣告式驗收零 key、離線可測;要 soft 層 LLM-judge 再加裝 [llm]。
+mcp = ["fastmcp>=2.0"]
 dev = ["pytest>=8", "ruff>=0.4", "pre-commit>=4"]
 
 [tool.setuptools.packages.find]

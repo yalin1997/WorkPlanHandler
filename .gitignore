@@ -9,3 +9,6 @@ venv/
 
 # M6-3 真 LLM probe 的執行產物(實測紀錄,不入庫)
 m6_probe_out/
+
+# MCP gatekeeper server 預設持久化目錄(執行期狀態,不入庫)
+.workplan_store/
