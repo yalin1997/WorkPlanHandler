@@ -1,11 +1,28 @@
-"""WorkPlanHandler — 為 agent planner 設計的長任務執行管理模組。
+"""WorkPlanHandler — 為 agent planner 設計的長任務執行管理模組(0.1.0)。
 
-Phase 1 交付:本套件目前僅含「介面草圖」(models / protocols),
-用以具體化 docs/02-mvp-proposal.md 的設計提案。執行迴圈(engine)、
-verifiers、planners、adapters/langgraph 將於 Phase 2 實作。
+本頂層命名空間是**零框架依賴的穩定公開面**(見 ``__all__`` 與
+tests/test_public_api.py):核心資料模型(models/events)、純函式狀態機
+(engine)、可插拔協定(protocols)與 mock 元件。
+
+需要 LangGraph 整合或真 LLM 元件時,以顯式路徑取用(刻意不在此 eager import,
+以維持核心零依賴 D9):
+  - ``from workplan.adapters.langgraph import WorkPlanRunner``  # extra: langgraph
+  - ``from workplan.planners.llm_planner import LLMPlanner``    # extra: llm
+  - ``from workplan.verifiers.llm_judge import LLMJudgeVerifier``  # extra: llm
 """
+
+from . import engine
+from .engine import MAX_REPLANS, Action, Decision
+from .errors import (
+    IllegalTransitionError,
+    PlanIntegrityError,
+    ReplanNotSupported,
+    WorkPlanError,
+)
+from .events import Event, EventType
 from .models import (
     AcceptanceCriterion,
+    HumanGate,
     Plan,
     PlanState,
     Step,
@@ -16,12 +33,23 @@ from .protocols import (
     Planner,
     PlanStore,
     StepOutput,
-    Verifier,
     VerificationResult,
+    Verifier,
 )
 
 __all__ = [
+    "engine",
+    "Action",
+    "Decision",
+    "MAX_REPLANS",
+    "WorkPlanError",
+    "PlanIntegrityError",
+    "IllegalTransitionError",
+    "ReplanNotSupported",
+    "Event",
+    "EventType",
     "AcceptanceCriterion",
+    "HumanGate",
     "Plan",
     "PlanState",
     "Step",
@@ -34,4 +62,4 @@ __all__ = [
     "VerificationResult",
 ]
 
-__version__ = "0.0.1.dev0"  # Phase 1: design sketch only
+__version__ = "0.1.0"

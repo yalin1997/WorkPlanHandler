@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workplan"
+version = "0.1.0"
+description = "Framework-agnostic 長任務執行管理模組:照計劃推進、逐階段驗收、失敗重試/重規劃、中斷續跑"
+requires-python = ">=3.11"
+dependencies = []          # 核心零依賴(D9)
+
+[project.optional-dependencies]
+langgraph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]
+# llm:預設接 Claude(Anthropic)開箱即用。改接 OpenAI / Google 等 provider
+# 時,自行安裝對應 langchain 整合(如 langchain-openai / langchain-google-genai),
+# 再以 model_name="openai:..." 走 init_chat_model,或直接把該 provider 的
+# ChatModel 實例傳給 LLMPlanner(model=...) / LLMJudgeVerifier(model=...)。
+llm = ["langchain>=0.3", "langchain-anthropic"]
+# ollama:本地 Ollama 部署(ChatOllama);接 Gemma / Llama / Qwen 等本地模型。
+# 已含 langchain(LLMPlanner/LLMJudgeVerifier 的模組頂層 import 需要),
+# 無需額外裝 [llm](除非要用 langchain-anthropic 的預設 init_chat_model 路徑)。
+# 使用:pip install 'workplan[ollama]',再把 ChatOllama 實例注入 model= 參數。
+ollama = ["langchain>=0.3", "langchain-ollama>=0.3"]
+google = ["langchain>=0.3", "langchain-google-genai>=2.0"]
+# mcp:把驗收閘門包成 MCP tool(HTTP)供任何 MCP client(Claude Code / Cursor /
+# Codex / 自家 agent)接入。僅 adapters/mcp_server.py 可 import fastmcp(D9)。
+# 純宣告式驗收零 key、離線可測;要 soft 層 LLM-judge 再加裝 [llm]。
+mcp = ["fastmcp>=2.0"]
+dev = ["pytest>=8", "ruff>=0.4", "pre-commit>=4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]   # "." 讓測試可 import examples/ 內的 quickstart 範例
+markers = ["slow: 跑得慢的測試(subprocess 級),日常以 -m 'not slow' 跳過"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
