@@ -98,6 +98,7 @@ Verdict {
   next_step: StepView | null   # advanced / replan 完成時帶出
   recitation: str
   audit_tail: [Event]          # 本次轉移產生的事件(選填,供 host 顯示/記錄)
+  warnings: [str]              # advisory 模式時標明「未經 server 端驗收」
 }
 ```
 
@@ -114,6 +115,15 @@ Verdict {
 - `submit` 把 engine 的 `on_executed`(可能直接 `VERIFY`)與 verifier、`on_verified` 三步**在一次 tool call 內走完**,對 agent 暴露成單一原子操作「交件→拿裁決」。
 - `may_advance=false` 時,`current` 仍只回**同一步**(帶上 feedback 與遞增的 `attempt`)——這就是「沒過不發下一步」的具體實作。
 - retry/replan 次數用盡 → `result="escalated"`,等 `resolve`(對映 engine 的 `ESCALATE`/`blocked`)。
+
+**驗收層可配置(F1)與能力校驗(B1,fail-closed)**:
+- `build_server` 依參數決定 server 啟用哪些驗收層,形成「**能力集**」:`hard` 永遠在(離線宣告式 check,零 key);`soft` 僅當給 `judge_model`(需 `[llm]`);`human` 僅當 `enable_human=True`(掛 `HumanGateVerifier`,對映 `resolve` 流程)。
+- **`start` 時做能力校驗**:逐步比對「步驟宣告的 acceptance.kind」vs「能力集」。若某步宣告了 `llm_judge`/`human`,但 server 沒掛對應層 → **`start` 直接 `raise`**(fail-closed),不讓 agent 靠「宣告了、server 卻偷偷沒擋」的假閘門開跑。
+  - 對照修復前的 fail-open bug:`llm_judge` 步在純 hard server 下,`LayeredVerifier` 因無適用層而空轉回 `passed=True` → 零驗收放行。根因修在 **adapter 的 `start` 校驗**,**不改** core `LayeredVerifier` 語意(守 I5:沒定義 hard 驗收的步不該被 fail-closed 擋;守 D2/D9 薄殼邊界)。
+
+**advisory 全局開關(F2)**:
+- `build_server(mode="advisory")` / `Gatekeeper(mode="advisory")` 是**唯一**正當關閉閘門的入口(operator 有意識地關)。此模式下 `submit` 不跑驗收、`may_advance` 恆 `true`、所有步只記錄(Tier 1 = `TodoWrite` 式便條紙,由 agent 自決完成),`start`/`submit` 的 `warnings` 明示「無 server 端閘門」。
+- 關鍵分辨:**operator 主動關閘門(advisory)= OK**;**某步宣告了閘門、server 卻偷偷沒擋 = 必須 fail-closed**。兩者由 `mode` 明確區隔,不混淆。
 
 ---
 
@@ -161,6 +171,8 @@ server   … verify(s2) → PASS → advance
 - session 狀態就是既有的 `PlanState`(I2 全可序列化),server 端以 `thread_id` 為 key 持有;每次轉移後 `save()`(I3)。
 - 持久化沿用既有 `PlanStore` Protocol(`save`/`load`)。**但目前唯一實作綁在 langgraph adapter**(D7,SqliteSaver)。本設計需要一個**框架無關的 `PlanStore`**(簡單 `JsonFilePlanStore` 或獨立 `SqlitePlanStore`)。
 - ⭐ **副產品價值**:這個 standalone store 正好補上 `CLAUDE.md` 點名「持久化/續跑電池目前只透過 langgraph 供應」的缺口——**MCP 整合會順手交付第一條「非 LangGraph 一級路徑」**,而非只是多一個 adapter。
+
+**並發安全範圍(誠實標註,B2)**:`submit`/`start`/`resolve`/`replan` 都是 `load → compute → save` 的 read-modify-write。`Gatekeeper` 以 **per-thread 鎖全程包住**這三段(非僅各別保護單次 save/load),故**同一 process 內、同 `thread_id` 的並發請求安全、無 lost update**;不同 `thread_id` 互不阻塞。**限制**:`threading.Lock` 只在單一 process 內有效——**多 worker process** 部署需檔案鎖(flock)/CAS 級的 store,列為需求驅動的後續(YAGNI),目前 MVP 不承諾跨 process 並發安全。
 
 ---
 

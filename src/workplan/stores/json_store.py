@@ -5,8 +5,9 @@
 
 設計重點:
   - **atomic write**:先寫 ``.tmp`` 再 ``os.replace``,避免寫到一半被讀到半截檔。
-  - **per-thread lock**:同 thread 的並發 save/load 序列化(HTTP server 多請求安全);
-    不同 thread 互不阻塞。
+  - **per-thread lock**:同 thread 的並發 save/load **各自**序列化、不同 thread 互不
+    阻塞。注意:本鎖只保護**單次** save 或 load;跨 load→compute→save 的原子性由
+    上層(``Gatekeeper`` 全程持鎖,B2)負責,不在此層承諾。
   - **防目錄穿越**:thread_id 不得含路徑分隔符或為 ``.``/``..``。
 
 不依賴任何 agent 框架(framework-agnostic):core 檔,受 import 邊界鐵則約束。

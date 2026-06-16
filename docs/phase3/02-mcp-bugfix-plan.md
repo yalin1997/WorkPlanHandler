@@ -1,7 +1,7 @@
 # MCP gatekeeper Bug 修復計畫(M7 收尾)
 
-**狀態**:草案,待 review 後實作。**本文只規劃,尚未動 code。**
-**範圍**:`adapters/mcp_server.py` 的 MCP gatekeeper(程式碼現於分支 `claude/M7_mcp_server_integration`,實作時併入開發分支)。
+**狀態**:✅ 已實作(B1 + B2 修復完成,TDD 全綠)。本文保留為修復依據與決策紀錄。
+**範圍**:`adapters/mcp_server.py` 的 MCP gatekeeper。修復測試見 `tests/test_mcp_gatekeeper_config.py`。
 **前置**:[`01-mcp-tool-integration-design.md`](01-mcp-tool-integration-design.md)、[`../phase2/00-overview-and-decisions.md`](../phase2/00-overview-and-decisions.md)(I5 / fail-closed 鐵則)。
 
 兩個 bug 在 code review 中確認:**B1 fail-open(致命)**、**B2 read-modify-write race**。本文逐項給「根因 / 修法 / 改哪些檔 / 測試 / 驗收標準」。

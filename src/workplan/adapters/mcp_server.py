@@ -22,17 +22,22 @@ adapter——核心一行不改。tool 邏輯在純 ``Gatekeeper`` 類(不依賴
 
 from __future__ import annotations
 
+import threading
 import uuid
 from typing import Any
 
 from .. import engine
 from ..engine import Action, Decision
 from ..models import AcceptanceCriterion, Plan, PlanState, Step
-from ..protocols import StepOutput
+from ..protocols import StepOutput, VerificationResult
 from ..stores.json_store import JsonFilePlanStore
 from ..verifiers import LayeredVerifier
 from ..verifiers.builtin_checks import BUILTIN_CHECKS
 from ..verifiers.programmatic import ProgrammaticVerifier
+
+# server 能力集:acceptance.kind → 要能擋住它所需的 verifier 層名。
+# programmatic 走 hard 層(離線恆在);llm_judge 需 soft 層;human 需 human 層。
+_KIND_REQUIRES_LAYER = {"llm_judge": "soft", "human": "human"}
 
 # ── plan spec(agent 經 JSON 送來)→ 內部 Plan ─────────────────────────────
 
@@ -55,15 +60,43 @@ def _acceptance_from_spec(acc: dict | None) -> AcceptanceCriterion:
     )
 
 
-def _is_gated(crit: AcceptanceCriterion) -> bool:
-    """此驗收條件是否真能構成閘門(否則只是便條紙)。"""
-    if crit.kind in ("human", "llm_judge"):
-        return True
+def _is_gated(crit: AcceptanceCriterion, capabilities: set[str]) -> bool:
+    """此驗收條件在「server 實際能力集」下是否真能構成閘門(否則只是便條紙)。
+
+    關鍵:只看「宣告的 kind」不夠——必須問 server 有沒有對應層擋得住。
+    llm_judge 需 soft 層、human 需 human 層;programmatic 走恆在的 hard 層,
+    但仍需具名 check 才有東西可驗。
+    """
+    need = _KIND_REQUIRES_LAYER.get(crit.kind)
+    if need is not None:
+        return need in capabilities
     return "check" in crit.spec  # programmatic 必須有具名 check
 
 
+def _require_enforceable(step: Step, capabilities: set[str]) -> None:
+    """fail-closed:若某步宣告了 server 能力集擋不住的驗收層 → raise(B1 修法核心)。
+
+    這擋掉「宣告 llm_judge/human 閘門、server 卻偷偷沒擋」的 fail-open:
+    agent 無法靠假閘門開跑。要正當關閉閘門只有唯一入口 mode="advisory"。
+    """
+    crit = step.acceptance
+    need = _KIND_REQUIRES_LAYER.get(crit.kind)
+    if need is not None and need not in capabilities:
+        raise ValueError(
+            f"步驟 {step.id} 宣告 {crit.kind!r} 驗收(需 server 啟用 {need!r} 層),"
+            f"但目前能力集為 {sorted(capabilities)}。"
+            f"請為 server 掛上對應層(soft 需 judge_model;human 需 enable_human),"
+            f"或改用 mode='advisory' 由 operator 有意識地關閉閘門。"
+        )
+
+
 def _plan_from_spec(
-    goal: str, steps_spec: list[dict], *, revision_note: str = ""
+    goal: str,
+    steps_spec: list[dict],
+    *,
+    capabilities: set[str],
+    mode: str = "gated",
+    revision_note: str = "",
 ) -> tuple[Plan, list[str]]:
     if not steps_spec:
         raise ValueError("plan 至少需要一個步驟。")
@@ -80,12 +113,24 @@ def _plan_from_spec(
             max_attempts=int(s.get("max_attempts", 2)),
         )
         steps.append(step)
-        if not _is_gated(crit):
+        if mode == "advisory":
+            continue  # operator 有意識關閘門:跳過能力校驗與逐步 warning(start 統一標示)
+        # gated:宣告了擋不住的層 → fail-closed;programmatic 無 check → 僅 warning(守 I5)
+        _require_enforceable(step, capabilities)
+        if not _is_gated(crit, capabilities):
             warnings.append(
-                f"步驟 {step.id} 無可強制驗收條件(acceptance.spec 無 'check',"
-                f"kind 非 llm_judge/human),此步不設閘門、submit 會直接放行。"
+                f"步驟 {step.id} 無可強制驗收條件(acceptance.spec 無 'check'),"
+                f"此步不設閘門、submit 會直接放行。"
             )
     return Plan(goal=goal, steps=steps, revision_note=revision_note), warnings
+
+
+def _derive_capabilities(verifier: Any) -> set[str]:
+    """從 verifier 推導 server 能力集:LayeredVerifier 取其層名;否則保守視為 hard。"""
+    layers = getattr(verifier, "layers", None)
+    if layers is not None:
+        return {name for name, _, _ in layers}
+    return {"hard"}
 
 
 # ── 純邏輯層(不依賴 fastmcp,離線可測)──────────────────────────────────
@@ -97,6 +142,10 @@ class Gatekeeper:
     Args:
         store: PlanStore 實作;預設 JsonFilePlanStore()。
         verifier: server 端 verifier;預設 hard 層 = 內建宣告式 check 註冊表。
+        capabilities: server 能擋住的驗收層集合;預設由 verifier 推導
+            (LayeredVerifier 取其層名)。決定 start 能力校驗與 _is_gated 判定。
+        mode: "gated"(預設,server 端閘門生效)或 "advisory"(關閉閘門、
+            submit 一律放行,由 agent 自決完成,= TodoWrite 式便條紙)。
         max_replans: 重規劃上限(沿用 engine 預設)。
     """
 
@@ -105,15 +154,37 @@ class Gatekeeper:
         *,
         store: Any,
         verifier: Any = None,
+        capabilities: set[str] | None = None,
+        mode: str = "gated",
         max_replans: int = engine.MAX_REPLANS,
     ) -> None:
+        if mode not in ("gated", "advisory"):
+            raise ValueError(f"未知 mode:{mode!r}(允許 'gated' / 'advisory')。")
         self.store = store
         self.verifier = (
             verifier
             if verifier is not None
             else LayeredVerifier([("hard", ProgrammaticVerifier(BUILTIN_CHECKS), True)])
         )
+        self.capabilities = (
+            set(capabilities)
+            if capabilities is not None
+            else _derive_capabilities(self.verifier)
+        )
+        self.mode = mode
         self.max_replans = max_replans
+        # B2:per-thread 鎖,包住整個 load→compute→save(避免 read-modify-write race)。
+        # 限制:threading.Lock 僅單一 process 內有效;多 worker process 需檔案鎖/CAS。
+        self._locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
+
+    def _lock_for(self, thread_id: str) -> threading.Lock:
+        with self._locks_guard:
+            lock = self._locks.get(thread_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[thread_id] = lock
+            return lock
 
     # -- 讀取 / 視圖 --------------------------------------------------------
 
@@ -170,34 +241,62 @@ class Gatekeeper:
 
     def start(self, goal: str, plan: list[dict], thread_id: str | None = None) -> dict:
         tid = thread_id or uuid.uuid4().hex
-        if self.store.load(tid) is not None:
-            raise ValueError(f"thread_id {tid!r} 已存在;請改用 current/submit 續用。")
-        p, warnings = _plan_from_spec(goal, plan)
-        dec = engine.initialize(p, thread_id=tid)
-        self.store.save(tid, dec.state)
-        return {
-            "thread_id": tid,
-            "current_step": self._step_view(dec.state),
-            "recitation": dec.state.plan.render_for_recitation(),
-            "warnings": warnings,
-        }
+        with self._lock_for(tid):
+            if self.store.load(tid) is not None:
+                raise ValueError(
+                    f"thread_id {tid!r} 已存在;請改用 current/submit 續用。"
+                )
+            # 能力校驗在建構計劃時進行:宣告了擋不住的層即 fail-closed(B1)。
+            p, warnings = _plan_from_spec(
+                goal, plan, capabilities=self.capabilities, mode=self.mode
+            )
+            if self.mode == "advisory":
+                warnings = [
+                    "advisory 模式:server 端不設任何驗收閘門,submit 一律放行"
+                    "(由 agent 自決完成,等同 TodoWrite 式便條紙)。"
+                ]
+            dec = engine.initialize(p, thread_id=tid)
+            self.store.save(tid, dec.state)
+            return {
+                "thread_id": tid,
+                "current_step": self._step_view(dec.state),
+                "recitation": dec.state.plan.render_for_recitation(),
+                "warnings": warnings,
+            }
 
     def submit(
         self, thread_id: str, output: str, artifacts: dict | None = None
     ) -> dict:
-        state = self._load(thread_id)
-        if state.status != "running":
-            raise ValueError(
-                f"thread {thread_id} 狀態為 {state.status},不接受 submit(需 running)。"
-            )
-        out = StepOutput(content=output, artifacts=artifacts)
-        dec = engine.on_executed(state, out, max_replans=self.max_replans)
-        if dec.action == Action.VERIFY:
-            step = dec.state.current_step
-            result = self.verifier.verify(step, out, dec.state)
-            dec = engine.on_verified(dec.state, result, max_replans=self.max_replans)
-        self.store.save(thread_id, dec.state)
-        return self._verdict(thread_id, dec)
+        with self._lock_for(thread_id):  # B2:load→compute→save 全程持鎖
+            state = self._load(thread_id)
+            if state.status != "running":
+                raise ValueError(
+                    f"thread {thread_id} 狀態 {state.status},submit 需 running。"
+                )
+            out = StepOutput(content=output, artifacts=artifacts)
+            dec = engine.on_executed(state, out, max_replans=self.max_replans)
+            if dec.action == Action.VERIFY:
+                if self.mode == "advisory":
+                    # advisory:不跑驗收,逕記為通過(Tier 1 便條紙)。
+                    result = VerificationResult(
+                        passed=True,
+                        score=1.0,
+                        feedback="advisory:無 server 端閘門,逕行推進。",
+                        layer="advisory",
+                    )
+                else:
+                    step = dec.state.current_step
+                    result = self.verifier.verify(step, out, dec.state)
+                dec = engine.on_verified(
+                    dec.state, result, max_replans=self.max_replans
+                )
+            self.store.save(thread_id, dec.state)
+            verdict = self._verdict(thread_id, dec)
+            if self.mode == "advisory":
+                verdict["warnings"] = [
+                    "advisory:此 verdict 未經 server 端驗收,may_advance 恆為 true。"
+                ]
+            return verdict
 
     def current(self, thread_id: str) -> dict:
         state = self._load(thread_id)
@@ -244,32 +343,42 @@ class Gatekeeper:
     def resolve(self, thread_id: str, resolution: str, note: str = "") -> dict:
         if resolution not in ("approved", "rejected", "edited"):
             raise ValueError("resolution 須為 approved / rejected / edited。")
-        state = self._load(thread_id)
-        if state.status != "blocked" or state.pending_human is None:
-            raise ValueError(
-                f"thread {thread_id} 無待解人工關卡(status={state.status})。"
-            )
-        gate = state.pending_human
-        gate.resolution = resolution
-        gate.human_note = note or ""
-        dec = engine.on_human_resolved(state, gate)
-        self.store.save(thread_id, dec.state)
-        return self._verdict(thread_id, dec)
+        with self._lock_for(thread_id):  # B2:全程持鎖
+            state = self._load(thread_id)
+            if state.status != "blocked" or state.pending_human is None:
+                raise ValueError(
+                    f"thread {thread_id} 無待解人工關卡(status={state.status})。"
+                )
+            gate = state.pending_human
+            gate.resolution = resolution
+            gate.human_note = note or ""
+            dec = engine.on_human_resolved(state, gate)
+            self.store.save(thread_id, dec.state)
+            return self._verdict(thread_id, dec)
 
     def replan(self, thread_id: str, new_plan: dict) -> dict:
-        state = self._load(thread_id)
-        if state.status != "running":
-            raise ValueError(
-                f"thread {thread_id} 狀態為 {state.status},不接受 replan(需 running)。"
+        with self._lock_for(thread_id):  # B2:全程持鎖
+            state = self._load(thread_id)
+            if state.status != "running":
+                raise ValueError(
+                    f"thread {thread_id} 狀態 {state.status},replan 需 running。"
+                )
+            steps_spec = (
+                new_plan.get("steps", []) if isinstance(new_plan, dict) else new_plan
             )
-        steps_spec = (
-            new_plan.get("steps", []) if isinstance(new_plan, dict) else new_plan
-        )
-        note = new_plan.get("revision_note", "") if isinstance(new_plan, dict) else ""
-        p, _ = _plan_from_spec(state.plan.goal, steps_spec, revision_note=note)
-        dec = engine.on_replanned(state, p)
-        self.store.save(thread_id, dec.state)
-        return self._verdict(thread_id, dec)
+            note = (
+                new_plan.get("revision_note", "") if isinstance(new_plan, dict) else ""
+            )
+            p, _ = _plan_from_spec(
+                state.plan.goal,
+                steps_spec,
+                capabilities=self.capabilities,
+                mode=self.mode,
+                revision_note=note,
+            )
+            dec = engine.on_replanned(state, p)
+            self.store.save(thread_id, dec.state)
+            return self._verdict(thread_id, dec)
 
 
 # ── fastmcp 包裝(唯一 import fastmcp 之處;延遲 import)─────────────────────
@@ -280,13 +389,23 @@ def build_server(
     store: Any = None,
     verifier: Any = None,
     judge_model: Any = None,
+    enable_human: bool = False,
+    mode: str = "gated",
     max_replans: int = engine.MAX_REPLANS,
     name: str = "workplan",
 ) -> Any:
     """組裝 fastmcp server,把 Gatekeeper 的六個方法註冊為 MCP tool。
 
-    judge_model 給定時(需 ``[llm]`` extra)附加 soft 層 LLM-judge;否則純宣告式
-    hard 驗收(零 key、離線可測)。
+    驗收層可配置(F1):
+      - hard:永遠啟用(離線宣告式 check 註冊表,零 key)。
+      - soft:``judge_model`` 給定時(需 ``[llm]`` extra)附加 LLM-judge。
+      - human:``enable_human=True`` 時附加 HumanGateVerifier(對映 resolve 流程)。
+
+    閘門開關(F2):``mode="gated"``(預設,server 端驗收生效)或 ``"advisory"``
+    (關閉閘門、submit 一律放行,由 agent 自決完成)。
+
+    能力集由所掛層自動推導:宣告了 server 未掛之層的步驟,``start`` 會 fail-closed
+    報錯(B1)——不會出現「宣告了閘門卻偷偷放行」的 fail-open。
     """
     if store is None:
         store = JsonFilePlanStore()
@@ -296,8 +415,12 @@ def build_server(
             from ..verifiers.llm_judge import LLMJudgeVerifier  # 延遲:需 [llm]
 
             layers.append(("soft", LLMJudgeVerifier(model=judge_model), True))
+        if enable_human:
+            from ..verifiers.human_gate import HumanGateVerifier
+
+            layers.append(("human", HumanGateVerifier(), True))
         verifier = LayeredVerifier(layers)
-    gk = Gatekeeper(store=store, verifier=verifier, max_replans=max_replans)
+    gk = Gatekeeper(store=store, verifier=verifier, mode=mode, max_replans=max_replans)
 
     from fastmcp import FastMCP  # 延遲:唯一 framework import,需 [mcp]
 

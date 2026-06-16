@@ -6,9 +6,12 @@
 
 - **6 個 tool**(`start`/`submit`/`current`/`plan`/`resolve`/`replan`):`submit` 在 server 端跑驗收,回 `may_advance`——不通過拿不到下一步(資訊槓桿;閘門為「軟但真實」,硬保證仍走 LangGraph adapter)。
 - **新元件**:`adapters/mcp_server.py`(唯一 import fastmcp;純邏輯 `Gatekeeper` 離線可測)、`stores/json_store.py`(`JsonFilePlanStore`,首條非 LangGraph 持久化路徑)、`verifiers/builtin_checks.py`(宣告式 check 註冊表,agent 經 JSON 引用)。
-- **驗收機制**:宣告式 check(hard)+ 選配 LLM-judge(soft);純宣告式零 key、離線可測。
+- **驗收機制**:宣告式 check(hard)+ 選配 LLM-judge(soft)+ 選配 human gate;純宣告式零 key、離線可測。
+- **驗收層可配置 + fail-closed 能力校驗(修復 fail-open bug B1)**:`build_server` 依參數(`judge_model` / `enable_human`)決定啟用哪些層,形成「能力集」;`start` 時逐步校驗——步驟宣告了 server 沒掛的層(`llm_judge`/`human`)即 **`raise`**(fail-closed),杜絕「宣告了閘門、server 卻偷偷零驗收放行」。根因修在 adapter 的 `start` 校驗,**不改** core `LayeredVerifier`(守 I5 / D2 薄殼邊界)。
+- **advisory 全局開關(F2)**:`mode="advisory"` 是唯一正當關閘門入口(operator 有意識地關)——`submit` 不驗收、`may_advance` 恆 true、`warnings` 明示「無 server 端閘門」(= `TodoWrite` 式便條紙)。
+- **並發安全(修復 race bug B2)**:`Gatekeeper` 以 per-thread 鎖**全程包住** `start`/`submit`/`resolve`/`replan` 的 load→compute→save,**同 process 內同 `thread_id` 並發無 lost update**;不同 `thread_id` 不互相阻塞。誠實限制:`threading.Lock` 僅單 process 有效,多 worker process 需檔案鎖/CAS(YAGNI,未承諾)。
 - **打包**:`pip install "workplan[mcp]"`;啟動 `python -m workplan.adapters.mcp_server`。
-- **測試**:離線單測 + fastmcp in-memory Client 協定測 + 跨實例續跑(@slow);真 HTTP 連線已手動煙霧測通過。
+- **測試**:離線單測 + fastmcp in-memory Client 協定測 + 跨實例續跑(@slow);B1/B2 修復測試(能力校驗 raise / advisory / soft 層真驗收 / 同 thread 並發無 lost update)見 `tests/test_mcp_gatekeeper_config.py`;真 HTTP 連線已手動煙霧測通過。
 
 ---
 
